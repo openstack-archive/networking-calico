@@ -116,6 +116,7 @@ EOF
 		    iniset $NEUTRON_CONF DEFAULT dhcp_agents_per_network 9999
 		    iniset $Q_DHCP_CONF_FILE DEFAULT dhcp_agent_manager neutron.agent.dhcp_agent.DhcpAgentWithStateReport
 		    iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver networking_calico.agent.linux.interface.RoutedInterfaceDriver
+		    iniset $Q_DHCP_CONF_FILE DEFAULT dhcp_driver networking_calico.agent.linux.dhcp.DnsmasqRouted
 
 		    ;;
 
