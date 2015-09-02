@@ -76,6 +76,9 @@ if is_service_enabled calico; then
 		    # Install and configure etcd.
 		    install_configure_etcd
 
+		    # Install posix-spawn.
+		    install_package posix-spawn
+
 		    # Install the core Calico code.
 		    CALICO_DIR=${DEST}/calico
 		    git_clone ${CALICO_REPO:-https://github.com/projectcalico/calico.git} $CALICO_DIR ${CALICO_BRANCH:-routed}
