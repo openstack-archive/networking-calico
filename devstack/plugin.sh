@@ -25,7 +25,13 @@ function install_configure_etcd {
     # Edit /etc/init/etcd.conf: Find the line which begins exec
     # /usr/bin/etcd and edit it, substituting for <controller_fqdn>
     # and <controller_ip> appropriately.
-    sudo sed -i "s/exec.*/exec \/usr\/bin\/etcd --name=\"$HOSTNAME\" \
+    if $CALICO_COMPUTE_ONLY; then
+	# Configure an etcd proxy.
+	sudo sed -i "s/exec.*/exec \/usr\/bin\/etcd --proxy on \
+  --initial-cluster \"$SERVICE_HOST=http:\/\/$SERVICE_HOST:2380\"/" /etc/init/etcd.conf
+    else
+	# Configure an etcd master node.
+	sudo sed -i "s/exec.*/exec \/usr\/bin\/etcd --name=\"$HOSTNAME\" \
   --advertise-client-urls=\"http:\/\/$IP:2379,http:\/\/$IP:4001\" \
   --listen-client-urls=\"http:\/\/0.0.0.0:2379,http:\/\/0.0.0.0:4001\" \
   --listen-peer-urls \"http:\/\/0.0.0.0:2380\" \
@@ -33,6 +39,7 @@ function install_configure_etcd {
   --initial-cluster-token \"$TOKEN\" \
   --initial-cluster \"$HOSTNAME=http:\/\/$IP:2380\" \
   --initial-cluster-state \"new\"/" /etc/init/etcd.conf
+    fi
 
     # Start the etcd service:
     sudo service etcd start
