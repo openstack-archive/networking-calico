@@ -1,0 +1,9 @@
+Verified+2: Jenkins
+Code-Review+2: Neil Jerram <Neil.Jerram@metaswitch.com>
+Workflow+1: Neil Jerram <Neil.Jerram@metaswitch.com>
+Code-Review+1: venkatamahesh <venkatamaheshkotha@gmail.com>
+Submitted-by: Jenkins
+Submitted-at: Mon, 28 Sep 2015 12:51:31 +0000
+Reviewed-on: https://review.openstack.org/225755
+Project: openstack/networking-calico
+Branch: refs/heads/master
