@@ -922,6 +922,18 @@ def port_etcd_data(port):
     data['ipv4_nets'] = ipv4_nets
     data['ipv6_nets'] = ipv6_nets
 
+    ipv4_nat = []
+    ipv6_nat = []
+    for ip in port['floating_ips']:
+        if ':' in ip['in_ip']:
+            ipv6_nat.append(ip)
+        else:
+            ipv4_nat.append(ip)
+    if ipv4_nat:
+        data['ipv4_nat'] = ipv4_nat
+    if ipv6_nat:
+        data['ipv6_nat'] = ipv6_nat
+
     # Return that data.
     return data
 
