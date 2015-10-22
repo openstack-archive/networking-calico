@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright 2015 Metaswitch Networks
+# Copyright (c) 2015 Cisco Systems
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -241,6 +242,8 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
                  "profile_ids": ["SGID-default"],
                  "mac": "00:11:22:33:44:55",
                  "ipv4_gateway": "10.65.0.1",
+                 "ipv4_nat": [{'int_ip': '10.65.0.2',
+                               'ext_ip': u'192.168.0.1'}],
                  "ipv4_nets": ["10.65.0.2/32"],
                  "state": "active",
                  "ipv6_nets": []},
@@ -282,7 +285,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
         context = mock.MagicMock()
         context._port = lib.port1
         context._plugin_context.session.query.return_value.filter_by.\
-            side_effect = self.ips_for_port
+            side_effect = self.port_query
         self.driver.delete_port_postcommit(context)
         self.assertEtcdWrites({})
         self.assertEtcdDeletes(set(['/calico/v1/host/felix-host-1/workload/'
@@ -306,6 +309,8 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
                  "profile_ids": ["SGID-default"],
                  "mac": "00:11:22:33:44:55",
                  "ipv4_gateway": "10.65.0.1",
+                 "ipv4_nat": [{'int_ip': '10.65.0.2',
+                               'ext_ip': u'192.168.0.1'}],
                  "ipv4_nets": ["10.65.0.2/32"],
                  "state": "active",
                  "ipv6_nets": []},
@@ -342,6 +347,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
             "profile_ids": ["SGID-default"],
             "mac": "00:11:22:33:44:55",
             "ipv4_gateway": "10.65.0.1",
+            "ipv4_nat": [{'int_ip': '10.65.0.2', 'ext_ip': u'192.168.0.1'}],
             "ipv4_nets": ["10.65.0.2/32"],
             "state": "active",
             "ipv6_nets": []
@@ -365,6 +371,8 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
                  "profile_ids": ["SGID-default"],
                  "mac": "00:11:22:33:44:55",
                  "ipv4_gateway": "10.65.0.1",
+                 "ipv4_nat": [{'int_ip': '10.65.0.2',
+                               'ext_ip': u'192.168.0.1'}],
                  "ipv4_nets": ["10.65.0.2/32"],
                  "state": "active",
                  "ipv6_nets": []}
