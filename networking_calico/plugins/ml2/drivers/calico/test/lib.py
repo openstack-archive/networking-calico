@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright 2015 Metaswitch Networks
+# Copyright (c) 2015 Cisco Systems
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -82,6 +83,10 @@ port3 = {'binding:vif_type': 'tap',
          'admin_state_up': True,
          'security_groups': ['SGID-default'],
          'status': 'ACTIVE'}
+
+floating_ports = [{'fixed_port_id': 'DEADBEEF-1234-5678',
+                   'fixed_ip_address': '10.65.0.2',
+                   'floating_ip_address': '192.168.0.1'}]
 
 
 class EtcdException(Exception):
@@ -195,7 +200,7 @@ class Lib(object):
         self.db_context = mech_calico.ctx.get_admin_context()
 
         self.db_context.session.query.return_value.filter_by.side_effect = (
-            self.ips_for_port
+            self.port_query
         )
 
         # Arrange what the DB's get_ports will return.
@@ -489,11 +494,18 @@ class Lib(object):
         return [b for b in self.port_security_group_bindings
                 if b['port_id'] in allowed_ids]
 
-    def ips_for_port(self, port_id):
-        for port in self.osdb_ports:
-            if port['id'] == port_id:
-                break
+    def port_query(self, **kw):
+        if kw.get('port_id', None):
+            for port in self.osdb_ports:
+                if port['id'] == kw['port_id']:
+                    return port['fixed_ips']
+        elif kw.get('fixed_port_id', None):
+            fips = []
+            for fip in floating_ports:
+                if fip['fixed_port_id'] == kw['fixed_port_id']:
+                    fips.append(fip)
+            return fips
         else:
-            return None
+            raise Exception("port_query doesn't know how to handle kw=%r" % kw)
 
-        return port['fixed_ips']
+        return None
