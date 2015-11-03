@@ -94,7 +94,7 @@ if is_service_enabled calico; then
 
 		    # Install the core Calico code.
 		    CALICO_DIR=${DEST}/calico
-		    git_clone ${CALICO_REPO:-https://github.com/projectcalico/calico.git} $CALICO_DIR ${CALICO_BRANCH:-master}
+		    git_clone ${CALICO_REPO:-https://github.com/projectcalico/calico.git} $CALICO_DIR ${CALICO_BRANCH:-remove-dhcp-agent-dep}
 		    cd $CALICO_DIR
 		    pip_install .
 
@@ -148,6 +148,9 @@ EOF
 		    # Run script to automatically generate and
 		    # maintain BIRD config for the cluster.
 		    run_process calico-bird "HOST_IP=$HOST_IP /opt/stack/networking-calico/devstack/auto-bird-conf.sh"
+
+		    # Run the Calico DHCP agent.
+		    run_process calico-dhcp "sudo /usr/local/bin/calico-dhcp-agent"
 
 		    ;;
 
