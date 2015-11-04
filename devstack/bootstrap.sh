@@ -44,6 +44,7 @@ set -ex
 # SERVICE_HOST unset, by commenting out the following line.
 #
 export SERVICE_HOST=calico-vm18
+export TEST_GERRIT_CHANGE=241310/3
 
 # Assume that we are starting from the home directory of a non-root
 # user that can sudo, and hence is suitable for running DevStack.  For
