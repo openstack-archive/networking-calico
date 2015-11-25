@@ -23,16 +23,15 @@
 # document at http://docs.projectcalico.org/en/latest/architecture.html).
 #
 # It is implemented as a Neutron/ML2 mechanism driver.
-import eventlet
+from collections import namedtuple
+import contextlib
+from functools import wraps
 import json
 import os
-
-from collections import namedtuple
-from functools import wraps
-from sqlalchemy import exc as sa_exc
-from sqlalchemy.orm import exc as orm_exc
+import time
 
 # OpenStack imports.
+import eventlet
 from neutron.common import constants
 from neutron.common.exceptions import PortNotFound
 from neutron import context as ctx
@@ -40,9 +39,9 @@ from neutron.db import models_v2
 from neutron import manager
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.drivers import mech_agent
+from sqlalchemy import exc as sa_exc
 
 # Monkeypatch import
-from calico import datamodel_v1
 import neutron.plugins.ml2.rpc as rpc
 
 try:  # Icehouse, Juno
@@ -58,13 +57,21 @@ except ImportError:
         # Juno.
         from oslo.db import exception as db_exc
     except ImportError:
-        # Latest.
+        # Later.
         from oslo_db import exception as db_exc
 
+try:
+    # Icehouse/Juno.
+    from neutron.openstack.common import lockutils
+except ImportError:
+    # Later.
+    from oslo_concurrency import lockutils
 
 # Calico imports.
+from calico import datamodel_v1
 from calico.logutils import logging_exceptions
 import etcd
+
 from networking_calico.plugins.ml2.drivers.calico import t_etcd
 
 LOG = log.getLogger(__name__)
@@ -181,6 +188,8 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self._my_pid = None
         self._epoch = 0
         self.in_resync = False
+        self._last_port_status_cleanup_time = time.time()
+        self._port_status_cache = {}
 
         # Tell the monkeypatch where we are.
         global mech_driver
@@ -277,44 +286,77 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         agent_state = felix_agent_state(felix_hostname, start_flag=new)
         self.db.create_or_update_agent(self._db_context, agent_state)
 
-    def on_port_status_changed(self, hostname, port_id, status):
+    def on_port_status_changed(self, hostname, port_id, status_dict):
+        """Called when etcd tells us that a port status has changed.
+
+        :param hostname: hostname of the host containing the port.
+        :param port_id: the port ID.
+        :param calico_status: our status dict for the port or None if the
+               status was deleted.
+        """
+        port_status_key = (intern(hostname.encode("utf8")), port_id)
+        # Unwrap the dict around the actual status.
+        if status_dict is not None:
+            # Update.
+            calico_status = status_dict.get("status")
+        else:
+            # Deletion.
+            calico_status = None
+        if self._port_status_cache.get(port_status_key) != calico_status:
+            LOG.info("Status of port %s on host %s changed to %s",
+                     port_status_key, hostname, calico_status)
+            # Cache the status so we can squash duplicate updates during a
+            # resync, for example.
+            if calico_status is not None:
+                if calico_status in PORT_STATUS_MAPPING:
+                    # Intern the status to avoid keeping thousands of copies
+                    # of the status strings.  We know the .encode() is safe
+                    # because we just checked this was one of our expected
+                    # strings.
+                    interned_status = intern(calico_status.encode("utf8"))
+                    self._port_status_cache[port_status_key] = interned_status
+                else:
+                    LOG.error("Unknown port status: %r", calico_status)
+                    self._port_status_cache.pop(port_status_key, None)
+            else:
+                self._port_status_cache.pop(port_status_key, None)
+            # Actually do the update.
+            self._try_to_update_port_status(port_status_key)
+
+    def _try_to_update_port_status(self, port_status_key):
+        """Attempts to update the given port status.
+
+        :param port_status_key: tuple of hostname, port_id.
+        """
+        hostname, port_id = port_status_key
+        status = self._port_status_cache.get(port_status_key)
         if status:
-            port_status = PORT_STATUS_MAPPING.get(status.get("status"),
+            port_status = PORT_STATUS_MAPPING.get(status,
                                                   constants.PORT_STATUS_ERROR)
             LOG.info("Updating port %s status to %s", port_id, port_status)
         else:
             # Report deletion as error.  Either the port has genuinely been
             # deleted, in which case this update is ignored by
-            # update_port_status or the port still exists but we disagree,
+            # update_port_status() or the port still exists but we disagree,
             # which is an error.
             port_status = constants.PORT_STATUS_ERROR
             LOG.info("Reporting port %s deletion", port_id)
-        session = self._db_context.session
+
         try:
-            with session.begin(subtransactions=True):
-                # Lock the port for update.  This avoids a race when the port
-                # is being deleted: felix reports the status via this method
-                # but neutron is concurrently deleting the port from the DB.
-                # update_port_status() does a read of the port to check it
-                # exists before it updates it; that test passes but then the
-                # port gets deleted out from under it before it updates the
-                # port.
-                try:
-                    port = (session.query(models_v2.Port).
-                            with_lockmode("update").
-                            filter(models_v2.Port.id.startswith(port_id)).
-                            one())
-                except orm_exc.NoResultFound:
-                    LOG.info("Port %s not found, nothing to do", port_id)
-                else:
-                    LOG.info("Port %s found: %s", port_id, port)
-                    self.db.update_port_status(self._db_context,
-                                               port_id,
-                                               port_status)
+            self.db.update_port_status(self._db_context,
+                                       port_id,
+                                       port_status)
         except (db_exc.DBError,
-                sa_exc.SQLAlchemyError):
-            LOG.exception("Failed to update port status for %s. Giving up.",
-                          port_id)
+                sa_exc.SQLAlchemyError) as e:
+            # Defensive: pre-Liberty, it was easy to cause deadlocks here if
+            # any code path (in another loaded plugin, say) failed to take
+            # the db-access lock.  Post-Liberty, we shouldn't see any
+            # exceptions here because update_port_status() is wrapped with a
+            # retry decorator in the neutron code.
+            LOG.warning("Failed to update port status for %s due to %r.",
+                        port_id, e)
+        else:
+            LOG.debug("Updated port status for %s", port_id)
 
     def _get_db(self):
         if not self.db:
@@ -418,20 +460,21 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             LOG.info("Creating unbound port: no work required.")
             return
 
-        with context._plugin_context.session.begin(subtransactions=True):
+        plugin_context = context._plugin_context
+        with self._txn_from_context(plugin_context, tag="create-port"):
             # First, regain the current port. This protects against concurrent
             # writes breaking our state.
-            port = self.db.get_port(context._plugin_context, port['id'])
+            port = self.db.get_port(plugin_context, port['id'])
 
             # Next, fill out other information we need on the port.
             port = self.add_extra_port_information(
-                context._plugin_context, port
+                plugin_context, port
             )
 
             # Next, we need to work out what security profiles apply to this
             # port and grab information about it.
             profiles = self.get_security_profiles(
-                context._plugin_context, port
+                plugin_context, port
             )
 
             # Pass this to the transport layer.
@@ -471,8 +514,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             return
 
         # Now, re-read the port.
-        with context._plugin_context.session.begin(subtransactions=True):
-            port = self.db.get_port(context._plugin_context, port['id'])
+        plugin_context = context._plugin_context
+        with self._txn_from_context(plugin_context, tag="update-port"):
+            port = self.db.get_port(plugin_context, port['id'])
 
             # Now, fork execution based on the type of update we're performing.
             # There are a few:
@@ -528,7 +572,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         2. Write the profile to etcd.
         """
         LOG.info("Updating security group IDs %s", sgids)
-        with context.session.begin(subtransactions=True):
+        with self._txn_from_context(context, tag="sg-update"):
             rules = self.db.get_security_group_rules(
                 context, filters={'security_group_id': sgids}
             )
@@ -543,6 +587,38 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
             for profile in profiles:
                 self.transport.write_profile_to_etcd(profile)
+
+    @contextlib.contextmanager
+    def _txn_from_context(self, context, tag="<unset>"):
+        """Context manager: opens a DB transaction against the given context.
+
+        If required, this also takes the Neutron-wide db-access semaphore.
+
+        :return: context manager for use with with:.
+        """
+        session = context.session
+        conn_url = str(session.connection().engine.url).lower()
+        if (conn_url.startswith("mysql:") or
+                conn_url.startswith("mysql+mysqldb:")):
+            # Neutron is using the mysqldb driver for accessing the database.
+            # This has a known incompatibility with eventlet that leads to
+            # deadlock.  Take the neutron-wide db-access lock as a workaround.
+            # See https://bugs.launchpad.net/oslo.db/+bug/1350149 for a
+            # description of the issue.
+            LOG.debug("Waiting for db-access lock tag=%s...", tag)
+            try:
+                with lockutils.lock('db-access'):
+                    LOG.debug("...acquired db-access lock tag=%s", tag)
+                    with context.session.begin(subtransactions=True) as txn:
+                        yield txn
+            finally:
+                LOG.debug("Released db-access lock tag=%s", tag)
+        else:
+            # Liberty or later uses an eventlet-safe mysql library.  (Or, we're
+            # not using mysql at all.)
+            LOG.debug("Not using mysqldb driver, skipping db-access lock")
+            with context.session.begin(subtransactions=True) as txn:
+                yield txn
 
     def _port_unbound_update(self, context, port):
         """_port_unbound_update
@@ -566,11 +642,10 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         # another way, does the security profile change during migration steps,
         # or does a separate port update event occur?
         LOG.info("Port becoming bound: create.")
-        port = self.db.get_port(context._plugin_context, port['id'])
-        port = self.add_extra_port_information(context._plugin_context, port)
-        profiles = self.get_security_profiles(
-            context._plugin_context, port
-        )
+        plugin_context = context._plugin_context
+        port = self.db.get_port(plugin_context, port['id'])
+        port = self.add_extra_port_information(plugin_context, port)
+        profiles = self.get_security_profiles(plugin_context, port)
         self.transport.endpoint_created(port)
 
         for profile in profiles:
@@ -597,6 +672,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         """_update_port
 
         Called during port updates that have nothing to do with migration.
+
+        This method assumes it's being called from within a database
+        transaction and does not take out another one.
         """
         # TODO(nj): There's a lot of redundant code in these methods, with the
         # only key difference being taking out transactions. Come back and
@@ -610,18 +688,18 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         if not port_disabled:
             LOG.info("Port enabled, attempting to update.")
 
-            with context._plugin_context.session.begin(subtransactions=True):
-                port = self.db.get_port(context._plugin_context, port['id'])
-                port = self.add_extra_port_information(
-                    context._plugin_context, port
-                )
-                profiles = self.get_security_profiles(
-                    context._plugin_context, port
-                )
-                self.transport.endpoint_created(port)
+            plugin_context = context._plugin_context
+            port = self.db.get_port(plugin_context, port['id'])
+            port = self.add_extra_port_information(
+                plugin_context, port
+            )
+            profiles = self.get_security_profiles(
+                plugin_context, port
+            )
+            self.transport.endpoint_created(port)
 
-                for profile in profiles:
-                    self.transport.write_profile_to_etcd(profile)
+            for profile in profiles:
+                self.transport.write_profile_to_etcd(profile)
         else:
             # Port unbound, attempt to delete.
             LOG.info("Port disabled, attempting delete if needed.")
@@ -726,7 +804,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         # Then, grab all the ports from Neutron.
         # TODO(lukasa): We can reduce the amount of data we load from Neutron
         # here by filtering in the get_ports call.
-        with context.session.begin(subtransactions=True):
+        with self._txn_from_context(context, "resync-port"):
             ports = dict((port['id'], port)
                          for port in self.db.get_ports(context)
                          if self._port_is_endpoint_port(port))
@@ -790,7 +868,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         :param missing_port_ids: A set of IDs for ports missing from etcd.
         :returns: Nothing.
         """
-        with context.session.begin(subtransactions=True):
+        with self._txn_from_context(context, tag="resync-port-missing"):
             missing_ports = self.db.get_ports(
                 context, filters={'id': missing_port_ids}
             )
@@ -837,7 +915,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 LOG.info("Failed to update deleted endpoint %s", endpoint.id)
                 continue
 
-            with context.session.begin(subtransactions=True):
+            with self._txn_from_context(context, tag="resync-ports-changed"):
                 try:
                     port = self.db.get_port(context, endpoint.id)
                 except PortNotFound:
@@ -886,7 +964,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         # Anything not in either group is added to the 'reconcile' set.
         # This explicit with statement is technically unnecessary, but it helps
         # keep our transaction scope really clear.
-        with context.session.begin(subtransactions=True):
+        with self._txn_from_context(context, tag="resync-prof"):
             sgs = self.db.get_security_groups(context)
 
         sgids = set(sg['id'] for sg in sgs)
@@ -925,7 +1003,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         :param missing_group_ids: The IDs of the missing security groups.
         :returns: Nothing.
         """
-        with context.session.begin(subtransactions=True):
+        with self._txn_from_context(context, tag="resync-prof-missing"):
             rules = self.db.get_security_group_rules(
                 context, filters={'security_group_id': missing_group_ids}
             )
@@ -971,7 +1049,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 continue
 
             # Get the data from Neutron.
-            with context.session.begin(subtransactions=True):
+            with self._txn_from_context(context, tag="resync-prof-changed"):
                 rules = self.db.get_security_group_rules(
                     context, filters={'security_group_id': [etcd_profile.id]}
                 )
