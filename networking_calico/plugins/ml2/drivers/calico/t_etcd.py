@@ -644,6 +644,9 @@ class CalicoEtcdWatcher(etcdutils.EtcdWatcher):
         # Swap in the newly-loaded state.
         self._endpoints_by_host = endpoints_by_host
 
+    def _on_loop(self):
+        self.calico_driver.maybe_cleanup_port_statuses()
+
     def _on_status_set(self, response, hostname):
         """Called when a felix uptime report is inserted/updated."""
         try:
