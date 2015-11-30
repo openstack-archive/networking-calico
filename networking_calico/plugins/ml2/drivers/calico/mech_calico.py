@@ -32,8 +32,10 @@ import time
 
 # OpenStack imports.
 import eventlet
+from neutron.agent import rpc as agent_rpc
 from neutron.common import constants
 from neutron.common.exceptions import PortNotFound
+from neutron.common import topics
 from neutron import context as ctx
 from neutron.db import models_v2
 from neutron import manager
@@ -190,6 +192,8 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.in_resync = False
         self._last_port_status_cleanup_time = time.time()
         self._port_status_cache = {}
+        self._port_status_queue = eventlet.Queue()
+        self.state_report_rpc = None
 
         # Tell the monkeypatch where we are.
         global mech_driver
@@ -199,6 +203,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         # Make sure we initialise even if we don't see any API calls.
         eventlet.spawn_after(STARTUP_DELAY_SECS, self._init_state)
 
+    @logging_exceptions(LOG)
     def _init_state(self):
         """_init_state
 
@@ -224,6 +229,16 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self._get_db()
         self._db_context = ctx.get_admin_context()
 
+        # Get RPC connection for fanning out Felix state reports.
+        try:
+            state_report_topic = topics.REPORTS
+        except AttributeError:
+            # Older versions of OpenStack share the PLUGIN topic.
+            state_report_topic = topics.PLUGIN
+        self.state_report_rpc = agent_rpc.PluginReportStateAPI(
+            state_report_topic
+        )
+
         # Use Etcd-based transport.
         if self.transport:
             # If we've been forked then the old transport will incorrectly
@@ -244,6 +259,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self._epoch += 1
         eventlet.spawn(self.periodic_resync_thread, self._epoch)
         eventlet.spawn(self._status_updating_thread, self._epoch)
+        eventlet.spawn(self._loop_writing_port_statuses)
 
     @logging_exceptions(LOG)
     def _status_updating_thread(self, expected_epoch):
@@ -283,8 +299,15 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                         "Handling status updates thread exiting.")
 
     def on_felix_alive(self, felix_hostname, new):
+        LOG.info("Felix on host %s is alive; fanning out status report",
+                 felix_hostname)
+        # Rather than writing directly to the database, we use the RPC
+        # mechanism to fan out the request to another process.  This
+        # distributes the DB write load and avoids turning the db-access lock
+        # into a bottleneck.
         agent_state = felix_agent_state(felix_hostname, start_flag=new)
-        self.db.create_or_update_agent(self._db_context, agent_state)
+        self.state_report_rpc.report_state(self._db_context, agent_state,
+                                           use_call=False)
 
     def on_port_status_changed(self, hostname, port_id, status_dict):
         """Called when etcd tells us that a port status has changed.
@@ -320,6 +343,17 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                     self._port_status_cache.pop(port_status_key, None)
             else:
                 self._port_status_cache.pop(port_status_key, None)
+            # Defer the actual update to the background thread so that we don't
+            # hold up reading from etcd.  In particular, we don't want to block
+            # Felix status updates.
+            self._port_status_queue.put(port_status_key)
+
+    @logging_exceptions(LOG)
+    def _loop_writing_port_statuses(self):
+        LOG.info("Port status write thread started")
+        while True:
+            # Wait for work to do.
+            port_status_key = self._port_status_queue.get()
             # Actually do the update.
             self._try_to_update_port_status(port_status_key)
 
