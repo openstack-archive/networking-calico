@@ -20,3 +20,5 @@ http://docs.projectcalico.org/en/latest/openstack.html.
 * Documentation: http://docs.openstack.org/developer/networking-calico
 * Source: http://git.openstack.org/cgit/openstack/networking-calico
 * Bugs: http://bugs.launchpad.net/networking-calico
+
+Just testing our pull request build infrastructure...
