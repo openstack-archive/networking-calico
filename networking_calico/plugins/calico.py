@@ -32,7 +32,7 @@ except ImportError:
 LOG = log.getLogger(__name__)
 
 
-class CalicoCorePlugin(Ml2Plugin, l3_db.L3_NAT_db_mixin):
+class CalicoPlugin(Ml2Plugin, l3_db.L3_NAT_db_mixin):
     def __init__(self):
         # Add the ability to handle floating IPs.
         self._supported_extension_aliases.extend(["router"])
@@ -45,13 +45,13 @@ class CalicoCorePlugin(Ml2Plugin, l3_db.L3_NAT_db_mixin):
         LOG.info("Forcing ML2 tenant_network_types to 'local'")
         cfg.CONF.set_override('tenant_network_types', ['local'], group='ml2')
 
-        super(CalicoCorePlugin, self).__init__()
+        super(CalicoPlugin, self).__init__()
 
     # Intercept floating IP associates/disassociates so we can trigger an
     # appropriate endpoint update.
     def _update_floatingip(self, context, id, floatingip):
         old_floatingip, new_floatingip = super(
-            CalicoCorePlugin, self)._update_floatingip(context, id, floatingip)
+            CalicoPlugin, self)._update_floatingip(context, id, floatingip)
 
         if new_floatingip['port_id']:
             context.fip_update_port_id = new_floatingip['port_id']
