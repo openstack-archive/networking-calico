@@ -449,14 +449,54 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
     def delete_network_postcommit(self, context):
         LOG.info("DELETE_NETWORK_POSTCOMMIT: %s" % context)
 
+    @retry_on_cluster_id_change
+    @requires_state
     def create_subnet_postcommit(self, context):
         LOG.info("CREATE_SUBNET_POSTCOMMIT: %s" % context)
 
+        # Re-read the subnet from the DB.  This ensures that a change to the
+        # same subnet can't be processed by another controller process while
+        # we're writing the effects of this call into etcd.
+        subnet = context.current
+        plugin_context = context._plugin_context
+        with self._txn_from_context(plugin_context, tag="create-subnet"):
+            subnet = self.db.get_subnet(plugin_context, subnet['id'])
+            if subnet['enable_dhcp']:
+                # Pass relevant subnet info to the transport layer.
+                self.transport.subnet_created(subnet['id'],
+                                              subnet['cidr'],
+                                              subnet['gateway_ip'],
+                                              subnet['dns_nameservers'])
+
+    @retry_on_cluster_id_change
+    @requires_state
     def update_subnet_postcommit(self, context):
         LOG.info("UPDATE_SUBNET_POSTCOMMIT: %s" % context)
 
+        # Re-read the subnet from the DB.  This ensures that a change to the
+        # same subnet can't be processed by another controller process while
+        # we're writing the effects of this call into etcd.
+        subnet = context.current
+        plugin_context = context._plugin_context
+        with self._txn_from_context(plugin_context, tag="update-subnet"):
+            subnet = self.db.get_subnet(plugin_context, subnet['id'])
+            if subnet['enable_dhcp']:
+                # Pass relevant subnet info to the transport layer.
+                self.transport.subnet_created(subnet['id'],
+                                              subnet['cidr'],
+                                              subnet['gateway_ip'],
+                                              subnet['dns_nameservers'])
+            else:
+                # Tell transport layer that subnet has been deleted.
+                self.transport.subnet_deleted(subnet['id'],
+
+    @retry_on_cluster_id_change
+    @requires_state
     def delete_subnet_postcommit(self, context):
         LOG.info("DELETE_SUBNET_POSTCOMMIT: %s" % context)
+
+        # Pass on to the transport layer.
+        self.transport.subnet_deleted(context.current['id'])
 
     # Idealised method forms.
     @retry_on_cluster_id_change
@@ -528,7 +568,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         port = context._port
         original = context.original
 
-        # Abort early if we're manging non-endpoint ports.
+        # Abort early if we're managing non-endpoint ports.
         if not self._port_is_endpoint_port(port):
             return
 
