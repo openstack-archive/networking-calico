@@ -21,6 +21,7 @@
 import collections
 import functools
 import json
+import netaddr
 import re
 import socket
 import weakref
@@ -242,6 +243,29 @@ class CalicoTransportEtcd(object):
             json.dumps(profile_tags(profile)),
             **tags_kwargs
         )
+
+    @_handling_etcd_exceptions
+    def subnet_created(self, id, cidr, gateway_ip, dns_servers):
+        """Write data to etcd to describe a DHCP-enabled subnet."""
+        LOG.info("Write subnet %s %s to etcd", id, cidr)
+        data = {'cidr': str(netaddr.IPNetwork(cidr)),
+                'gateway_ip': gateway_ip}
+        if dns_servers:
+            data['dns_servers'] = dns_servers
+
+        self.client.write(datamodel_v1.key_for_subnet(id), json.dumps(data))
+
+    @_handling_etcd_exceptions
+    def subnet_deleted(self, id):
+        """Delete data from etcd for a subnet that is no longer wanted."""
+        LOG.info("Deleting subnet %s", id)
+        # Delete the etcd key for this endpoint.
+        key = datamodel_v1.key_for_subnet(id)
+        try:
+            self.client.delete(key)
+        except etcd.EtcdKeyNotFound:
+            # Already gone, treat as success.
+            LOG.debug("Key %s, which we were deleting, disappeared", key)
 
     @_handling_etcd_exceptions
     def endpoint_created(self, port):
@@ -905,22 +929,33 @@ def port_etcd_data(port):
     # TODO(MD4) Check the old version writes 'profile_id' in a form
     # that translation code in common.validate_endpoint() will work.
 
-    # Collect IPv4 and IPv6 addresses.  On the way, also set the
+    # Collect IPv4 and IPv6 addresses and subnet IDs.  On the way, also set the
     # corresponding gateway fields.  If there is more than one IPv4 or IPv6
     # gateway, the last one (in port['fixed_ips']) wins.
     ipv4_nets = []
     ipv6_nets = []
+    ipv4_subnet_ids = []
+    ipv6_subnet_ids = []
     for ip in port['fixed_ips']:
         if ':' in ip['ip_address']:
             ipv6_nets.append(ip['ip_address'] + '/128')
+            ipv6_subnet_ids.append(ip['subnet_id'])
             if ip['gateway'] is not None:
                 data['ipv6_gateway'] = ip['gateway']
         else:
             ipv4_nets.append(ip['ip_address'] + '/32')
+            ipv4_subnet_ids.append(ip['subnet_id'])
             if ip['gateway'] is not None:
                 data['ipv4_gateway'] = ip['gateway']
     data['ipv4_nets'] = ipv4_nets
     data['ipv6_nets'] = ipv6_nets
+    data['ipv4_subnet_ids'] = ipv4_subnet_ids
+    data['ipv6_subnet_ids'] = ipv6_subnet_ids
+
+    # Propagate the port's FQDN.
+    dns_assignment = port.get('dns_assignment')
+    if dns_assignment:
+        data['fqdn'] = dns_assignment[0]['fqdn']
 
     # Return that data.
     return data
