@@ -12,7 +12,6 @@ Depends:
  bird,
  calico-felix,
  networking-calico,
- neutron-dhcp-agent,
  iptables-persistent,
  ${misc:Depends},
  ${python:Depends},
