@@ -85,7 +85,7 @@ class RoutedInterfaceDriver(interface.LinuxInterfaceDriver):
             net = netaddr.IPNetwork(ip_cidr)
             LOG.debug("=> real cidr %s" % net.cidr)
             try:
-                device.route.delete_onlink_route(net.cidr)
+                device.route.delete_onlink_route(str(net.cidr))
             except RuntimeError:
                 LOG.debug("Subnet route %s did not exist" % net.cidr)
 
