@@ -1,0 +1,8 @@
+Code-Review+2: Shaun Crampton <shaun.crampton@metaswitch.com>
+Workflow+1: Shaun Crampton <shaun.crampton@metaswitch.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 01 Feb 2016 09:33:20 +0000
+Reviewed-on: https://review.openstack.org/241310
+Project: openstack/networking-calico
+Branch: refs/heads/master
