@@ -17,5 +17,6 @@
 import sys
 import urllib3
 import urllib3.exceptions as u3e
-sys.modules["requests.packages.urllib3"] = urllib3
-sys.modules["requests.packages.urllib3.exceptions"] = u3e
+if sys.modules["urllib3"].exceptions is not sys.modules["urllib3.exceptions"]:
+    sys.modules["requests.packages.urllib3"] = urllib3
+    sys.modules["requests.packages.urllib3.exceptions"] = u3e
