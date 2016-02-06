@@ -38,11 +38,13 @@ ETCD_DELETE_ACTIONS = set(["delete", "expire", "compareAndDelete"])
 
 
 class RestartElection(Exception):
+
     """Exception indicating that we should start our leader election over."""
     pass
 
 
 class Elector(object):
+
     def __init__(self, client, server_id, election_key,
                  interval=30, ttl=60):
         """Class that manages elections.
@@ -188,13 +190,13 @@ class Elector(object):
                 LOG.debug("Master still running")
             else:
                 LOG.warning("Master was on this server but cannot find its "
-                         "PID in /proc.  Removing stale election key.")
+                            "PID in /proc.  Removing stale election key.")
                 try:
                     self._etcd_client.delete(self._key,
                                              prevValue=master_id)
                 except etcd.EtcdException as e:
                     LOG.warning("Failed to remove stale key from dead "
-                             "master: %r", e)
+                                "master: %r", e)
                 raise RestartElection()
 
     def _become_master(self):
@@ -305,6 +307,7 @@ class Elector(object):
 
 
 class ElectorStopped(GreenletExit):
+
     """ElectorStopped
 
     Custom exception used to stop our Elector.  Used to distinguish our
