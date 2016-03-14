@@ -17,7 +17,6 @@ import netaddr
 
 from neutron.agent.linux import interface
 from neutron.agent.linux import ip_lib
-from neutron.common import exceptions
 from neutron.i18n import _LE
 from oslo_log import log as logging
 
@@ -32,14 +31,6 @@ class RoutedInterfaceDriver(interface.LinuxInterfaceDriver):
 
     def __init__(self, conf):
         super(RoutedInterfaceDriver, self).__init__(conf)
-
-        # Require use_namespaces to be False.  Routed networking does
-        # not use namespaces.
-        if self.conf.use_namespaces:
-            raise exceptions.InvalidConfigurationOption(
-                opt_name='use_namespaces',
-                opt_value='True'
-            )
 
     @property
     def use_gateway_ips(self):

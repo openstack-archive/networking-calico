@@ -58,11 +58,11 @@ set -ex
 #
 # DEVSTACK_BRANCH
 #
-#     By default this script uses the stable/liberty branch of devstack.  To
-#     use a different branch, set the DEVSTACK_BRANCH environment variable
-#     before running this script; for example:
+#     By default this script uses the master branch of devstack.  To use a
+#     different branch, set the DEVSTACK_BRANCH environment variable before
+#     running this script; for example:
 #
-#         export DEVSTACK_BRANCH=master
+#         export DEVSTACK_BRANCH=stable/liberty
 # ------------------------------------------------------------------------------
 
 # Assume that we are starting from the home directory of a non-root
@@ -105,10 +105,8 @@ sudo sysctl -w net.ipv6.conf.all.forwarding=1
 git clone https://git.openstack.org/openstack-dev/devstack
 cd devstack
 
-# Use DevStack's stable/liberty branch by default.
-DEVSTACK_BRANCH=${DEVSTACK_BRANCH:-stable/liberty}
-
-# If DEVSTACK_BRANCH has been specified, check out that branch.
+# If DEVSTACK_BRANCH has been specified, check out that branch.  (Otherwise we
+# use DevStack's master branch.)
 if [ -n "$DEVSTACK_BRANCH" ]; then
     git checkout ${DEVSTACK_BRANCH}
 fi

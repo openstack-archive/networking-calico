@@ -119,11 +119,18 @@ class CalicoEtcdWatcher(EtcdWatcher):
 
     def _empty_network(self):
         """Construct and return an empty network model."""
-        return dhcp.NetModel(False,
-                             {"id": NETWORK_ID,
-                              "subnets": [],
-                              "ports": [],
-                              "mtu": constants.DEFAULT_NETWORK_MTU})
+        try:
+            return dhcp.NetModel(False,
+                                 {"id": NETWORK_ID,
+                                  "subnets": [],
+                                  "ports": [],
+                                  "mtu": constants.DEFAULT_NETWORK_MTU})
+        except TypeError:
+            # use_namespace option was removed during Mitaka cycle.
+            return dhcp.NetModel({"id": NETWORK_ID,
+                                  "subnets": [],
+                                  "ports": [],
+                                  "mtu": constants.DEFAULT_NETWORK_MTU})
 
     def __init__(self, agent):
         super(CalicoEtcdWatcher, self).__init__(
@@ -281,12 +288,21 @@ class CalicoEtcdWatcher(EtcdWatcher):
             self.agent.call_driver('reload_allocations', net)
         else:
             # Subnets changed, so need to 'restart' the DHCP driver.
-            net = dhcp.NetModel(False,
-                                {"id": net.id,
-                                 "subnets": new_subnets,
-                                 "ports": net.ports,
-                                 "tenant_id": "calico",
-                                 "mtu": constants.DEFAULT_NETWORK_MTU})
+            try:
+                net = dhcp.NetModel(False,
+                                    {"id": net.id,
+                                     "subnets": new_subnets,
+                                     "ports": net.ports,
+                                     "tenant_id": "calico",
+                                     "mtu": constants.DEFAULT_NETWORK_MTU})
+            except TypeError:
+                # use_namespace option was removed during Mitaka cycle.
+                net = dhcp.NetModel({"id": net.id,
+                                     "subnets": new_subnets,
+                                     "ports": net.ports,
+                                     "tenant_id": "calico",
+                                     "mtu": constants.DEFAULT_NETWORK_MTU})
+
             LOG.debug("new net: %s %s %s", net.id, net.subnets, net.ports)
 
             # Next line - i.e. just discarding the existing cache - is to work
@@ -462,7 +478,6 @@ class CalicoDhcpAgent(DhcpAgent):
 
         # Override settings that Calico's DHCP agent use requires.
         self.conf.set_override('enable_isolated_metadata', False)
-        self.conf.set_override('use_namespaces', False)
         self.conf.set_override(
             'interface_driver',
             'networking_calico.agent.linux.interface.RoutedInterfaceDriver'
