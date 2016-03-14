@@ -474,6 +474,12 @@ class TestDhcpAgent(base.BaseTestCase):
         )
         etcd_client.read.reset_mock()
 
+commonutils = 'neutron.agent.linux.dhcp.commonutils'
+try:
+    from neutron.agent.linux.dhcp import commonutils as xxx
+except:
+    # In Mitaka the import name changed to 'common_utils'.
+    commonutils = 'neutron.agent.linux.dhcp.common_utils'
 
 class TestDnsmasqRouted(base.BaseTestCase):
     def setUp(self):
@@ -482,7 +488,7 @@ class TestDnsmasqRouted(base.BaseTestCase):
         cfg.CONF.set_override('dhcp_confs', '/run')
 
     @mock.patch('neutron.agent.linux.dhcp.DeviceManager')
-    @mock.patch('neutron.agent.linux.dhcp.commonutils')
+    @mock.patch(commonutils)
     def test_build_cmdline(self, commonutils, device_mgr_cls):
         v4subnet = mock.Mock()
         v4subnet.id = 'subnet-1'
@@ -499,6 +505,7 @@ class TestDnsmasqRouted(base.BaseTestCase):
         network = mock.Mock()
         network.id = 'calico'
         network.subnets = [v4subnet, v6subnet]
+        network.mtu = 0
         device_mgr_cls.return_value.driver.bridged = False
         cmdline = DnsmasqRouted(cfg.CONF,
                                 network,

@@ -33,14 +33,6 @@ class RoutedInterfaceDriver(interface.LinuxInterfaceDriver):
     def __init__(self, conf):
         super(RoutedInterfaceDriver, self).__init__(conf)
 
-        # Require use_namespaces to be False.  Routed networking does
-        # not use namespaces.
-        if self.conf.use_namespaces:
-            raise exceptions.InvalidConfigurationOption(
-                opt_name='use_namespaces',
-                opt_value='True'
-            )
-
     @property
     def use_gateway_ips(self):
         # Routed networking does not bridge across compute hosts or
