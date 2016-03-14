@@ -101,6 +101,25 @@ class FakePlugin(object):
         LOG.debug("release_dhcp_port: %s %s", network_id, device_id)
 
 
+def empty_network():
+    """Construct and return an empty network model."""
+    return make_net_model({"id": NETWORK_ID,
+                           "subnets": [],
+                           "ports": [],
+                           "mtu": constants.DEFAULT_NETWORK_MTU})
+
+
+def make_net_model(net_spec):
+    try:
+        net_model = dhcp.NetModel(False, net_spec)
+    except TypeError:
+        # use_namespace option was removed during Mitaka cycle.
+        net_model = dhcp.NetModel(net_spec)
+        net_model._ns_name = None
+
+    return net_model
+
+
 class CalicoEtcdWatcher(EtcdWatcher):
 
     NETWORK_ID = 'calico'
@@ -117,14 +136,6 @@ class CalicoEtcdWatcher(EtcdWatcher):
     with ID 'calico', and many subnets within that network.
     """
 
-    def _empty_network(self):
-        """Construct and return an empty network model."""
-        return dhcp.NetModel(False,
-                             {"id": NETWORK_ID,
-                              "subnets": [],
-                              "ports": [],
-                              "mtu": constants.DEFAULT_NETWORK_MTU})
-
     def __init__(self, agent):
         super(CalicoEtcdWatcher, self).__init__(
             '127.0.0.1:4001',
@@ -134,7 +145,7 @@ class CalicoEtcdWatcher(EtcdWatcher):
         self.suppress_on_ports_changed = False
 
         # Create empty Calico network object in the cache.
-        self.agent.cache.put(self._empty_network())
+        self.agent.cache.put(empty_network())
 
         # Register the etcd paths that we need to watch.
         self.register_path(
@@ -281,12 +292,11 @@ class CalicoEtcdWatcher(EtcdWatcher):
             self.agent.call_driver('reload_allocations', net)
         else:
             # Subnets changed, so need to 'restart' the DHCP driver.
-            net = dhcp.NetModel(False,
-                                {"id": net.id,
-                                 "subnets": new_subnets,
-                                 "ports": net.ports,
-                                 "tenant_id": "calico",
-                                 "mtu": constants.DEFAULT_NETWORK_MTU})
+            net = make_net_model({"id": net.id,
+                                  "subnets": new_subnets,
+                                  "ports": net.ports,
+                                  "tenant_id": "calico",
+                                  "mtu": constants.DEFAULT_NETWORK_MTU})
             LOG.debug("new net: %s %s %s", net.id, net.subnets, net.ports)
 
             # Next line - i.e. just discarding the existing cache - is to work
@@ -383,7 +393,7 @@ class CalicoEtcdWatcher(EtcdWatcher):
         # Reset the cache.
         LOG.debug("Reset cache for new snapshot")
         self.agent.cache = NetworkCache()
-        self.agent.cache.put(self._empty_network())
+        self.agent.cache.put(empty_network())
 
         # Suppress the processing inside on_ports_changed, until we've
         # processed the whole snapshot.
@@ -462,7 +472,6 @@ class CalicoDhcpAgent(DhcpAgent):
 
         # Override settings that Calico's DHCP agent use requires.
         self.conf.set_override('enable_isolated_metadata', False)
-        self.conf.set_override('use_namespaces', False)
         self.conf.set_override(
             'interface_driver',
             'networking_calico.agent.linux.interface.RoutedInterfaceDriver'
