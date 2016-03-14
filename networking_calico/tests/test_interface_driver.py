@@ -25,9 +25,7 @@ class TestInterfaceDriver(base.BaseTestCase):
     def setUp(self):
         super(TestInterfaceDriver, self).setUp()
         config.register_interface_driver_opts_helper(cfg.CONF)
-        config.register_use_namespaces_opts_helper(cfg.CONF)
         cfg.CONF.register_opts(interface.OPTS)
-        cfg.CONF.set_override('use_namespaces', False)
 
     @mock.patch('neutron.agent.linux.ip_lib.IPDevice')
     @mock.patch.object(interface.LinuxInterfaceDriver, 'init_l3')
