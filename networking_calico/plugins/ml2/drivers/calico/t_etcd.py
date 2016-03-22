@@ -706,7 +706,7 @@ class CalicoEtcdWatcher(etcdutils.EtcdWatcher):
             LOG.info("TLS disabled, using HTTP to connect to etcd.")
             protocol = "http"
         super(CalicoEtcdWatcher, self).__init__(
-            "%s:%s" % (host, port),
+            ["%s:%s" % (host, port)],
             datamodel_v1.FELIX_STATUS_DIR,
             etcd_scheme=protocol,
             etcd_key=calico_cfg.etcd_key_file,
