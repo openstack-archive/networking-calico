@@ -6,7 +6,7 @@
 networking-calico
 =================
 
-networking-calico is the Neutron 'stadium' sub-project that provides 'Calico'
+networking-calico is the Neutron stadium sub-project that provides 'Calico'
 connectivity and security in an OpenStack/Neutron cloud.
 
 Calico (http://www.projectcalico.org/) uses IP routing to provide connectivity
@@ -15,6 +15,24 @@ whether VMs, containers or bare metal appliances; and iptables, to impose any
 desired fine-grained security policy between those workloads.  Calico thus
 differs from most other Neutron backends, which use bridging and tunneling to
 simulate L2-level connectivity between the VMs attached to a Neutron network.
+
+Calico networks are primarily intended to be provisioned in advance by the
+cloud operator, rather than being created by and for a particular tenant.  They
+all share the same address space, and there is automatic east-west reachability
+between different Calico networks, without any need for Neutron virtual
+routers.  In other words, they are provider networks.
+
+Each VM's fixed IP can be
+
+Reachability to and from the outside world depends on whether and how the cloud
+operator provides connectivity between their compute servers and the Internet.
+In particular:
+
+- Each compute server needs a route (often its default route) to the Internet,
+  for IP prefixes outside the data center.
+
+- The data center's border gateways need to have BGP speakers that peer with
+  those on each compute server, so that they can route.
 
 Calico networks also differ semantically from (non-external) Neutron networks,
 but are arguably similar to external Neutron networks, in that
