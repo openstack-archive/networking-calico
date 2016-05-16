@@ -43,6 +43,7 @@ there, if this is of interest to you.
 
    readme
    devstack
+   kuryr
    implementation-notes
    dhcp-agent
    contributing
