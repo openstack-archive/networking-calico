@@ -44,6 +44,7 @@ from neutron.db import models_v2
 from neutron import manager
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.drivers import mech_agent
+from six.moves import xrange
 from sqlalchemy import exc as sa_exc
 
 # Monkeypatch import

@@ -27,7 +27,7 @@ those workloads.
 Group:          Applications/Engineering
 Summary:        Project Calico networking for OpenStack/Neutron
 %if 0%{?el6}
-Requires:       calico-common, calico-felix, networking-calico, openstack-neutron, iptables, python-argparse
+Requires:       calico-common, calico-felix, networking-calico, openstack-neutron, iptables, python-argparse, python-six
 %else
 Requires:       calico-common, calico-felix, networking-calico, openstack-neutron, iptables
 %endif
