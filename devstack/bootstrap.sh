@@ -124,6 +124,7 @@ SERVICE_PASSWORD=91eb72bcafb4ddf246ab
 SERVICE_TOKEN=c5680feca5e2c9c8f820
 
 enable_plugin networking-calico $ncdir
+disable_service tempest
 
 LOGFILE=stack.log
 LOG_COLOR=False
