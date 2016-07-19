@@ -59,6 +59,10 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
             spec=self.driver._status_updating_thread
         )
 
+        self.driver.get_allowed_addr_pairs_for_port = mock.Mock(
+            return_value = []
+        )
+
         # Mock out config.
         lib.m_oslo.config.cfg.CONF.calico.etcd_host = "localhost"
         lib.m_oslo.config.cfg.CONF.calico.etcd_port = 4001
@@ -252,7 +256,8 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
                  "ipv4_subnet_ids": ["subnet-id-10.65.0--24"],
                  "state": "active",
                  "ipv6_subnet_ids": [],
-                 "ipv6_nets": []},
+                 "ipv6_nets": [],
+                 "allowed_address_pairs": []},
             '/calico/v1/host/felix-host-1/workload/openstack/instance-2/'
             'endpoint/FACEBEEF-1234-5678':
                 {"name": "tapFACEBEEF-12",
@@ -263,7 +268,8 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
                  "ipv4_subnet_ids": ["subnet-id-10.65.0--24"],
                  "state": "active",
                  "ipv6_subnet_ids": [],
-                 "ipv6_nets": []},
+                 "ipv6_nets": [],
+                 "allowed_address_pairs": []},
             '/calico/v1/policy/profile/openstack-sg-SGID-default/rules':
                 {"outbound_rules": [{"dst_ports": ["1:65535"],
                                      "dst_net": "0.0.0.0/0",
@@ -323,7 +329,8 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
                  "ipv4_subnet_ids": ["subnet-id-10.65.0--24"],
                  "state": "active",
                  "ipv6_subnet_ids": [],
-                 "ipv6_nets": []},
+                 "ipv6_nets": [],
+                 "allowed_address_pairs": []},
             '/calico/v1/policy/profile/openstack-sg-SGID-default/rules':
                 {"outbound_rules": [{"dst_ports": ["1:65535"],
                                      "dst_net": "0.0.0.0/0",
@@ -362,7 +369,8 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
             "ipv4_subnet_ids": ["subnet-id-10.65.0--24"],
             "state": "active",
             "ipv6_subnet_ids": [],
-            "ipv6_nets": []
+            "ipv6_nets": [],
+            "allowed_address_pairs": []
         }
         self.assertEtcdWrites(expected_writes)
         self.assertEtcdDeletes(set(['/calico/v1/host/felix-host-1/workload/'
@@ -389,7 +397,8 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
                  "ipv4_subnet_ids": ["subnet-id-10.65.0--24"],
                  "state": "active",
                  "ipv6_subnet_ids": [],
-                 "ipv6_nets": []}
+                 "ipv6_nets": [],
+                 "allowed_address_pairs": []}
         }
 
         self.assertEtcdWrites(expected_writes)
@@ -412,7 +421,8 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
                  "ipv6_nets": ["2001:db8:a41:2::12/128"],
                  "state": "active",
                  "ipv4_nets": [],
-                 "ipv4_subnet_ids": []},
+                 "ipv4_subnet_ids": [],
+                 "allowed_address_pairs": []},
             '/calico/v1/policy/profile/openstack-sg-SGID-default/rules':
                 {"outbound_rules": [{"dst_ports": ["1:65535"],
                                      "dst_net": "0.0.0.0/0",
@@ -558,7 +568,8 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
                  "ipv6_nets": ["2001:db8:a41:2::12/128"],
                  "state": "active",
                  "ipv4_nets": [],
-                 "ipv4_subnet_ids": []},
+                 "ipv4_subnet_ids": [],
+                 "allowed_address_pairs": []},
             '/calico/v1/policy/profile/openstack-sg-SG-1/rules':
                 {"outbound_rules": [],
                  "inbound_rules": [{"dst_ports": ["5060:5061"],
@@ -678,7 +689,8 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
                  "state": "active",
                  "ipv4_gateway": "10.65.0.1",
                  "ipv4_subnet_ids": ["subnet-id-10.65.0--24"],
-                 "ipv4_nets": ["10.65.0.188/32"]},
+                 "ipv4_nets": ["10.65.0.188/32"],
+                 "allowed_address_pairs": []},
             '/calico/v1/policy/profile/openstack-sg-SG-1/rules':
                 {"outbound_rules": [],
                  "inbound_rules": [{"dst_ports": [5070],

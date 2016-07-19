@@ -41,6 +41,8 @@ sys.modules['neutron.common.constants'] = m_constants = \
     m_neutron.common.constants
 sys.modules['neutron.common.exceptions'] = m_neutron.common.exceptions
 sys.modules['neutron.db'] = m_neutron.db
+sys.modules['neutron.db.allowed_address_pairs'] = \
+    m_neutron.db.allowed_address_pairs
 sys.modules['neutron.openstack'] = m_neutron.openstack
 sys.modules['neutron.openstack.common'] = m_neutron.openstack.common
 sys.modules['neutron.openstack.common.db'] = m_neutron.openstack.common.db
