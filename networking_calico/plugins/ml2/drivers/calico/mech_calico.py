@@ -1483,6 +1483,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         port['security_groups'] = self.get_security_groups_for_port(
             context, port
         )
+        port['allowed_address_pairs'] = self.db.get_allowed_address_pairs(
+            context, port['id']
+        )
         self.add_port_gateways(port, context)
         self.add_port_interface_name(port)
         return port

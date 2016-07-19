@@ -251,6 +251,8 @@ class CalicoEtcdWatcher(EtcdWatcher):
             for addrm, subnet_id in zip(endpoint['ipv%s_nets' % ip_version],
                                         endpoint['ipv%s_subnet_ids' %
                                                  ip_version]):
+                if not subnet_id:
+                    continue
                 ip_addr = addrm.split('/')[0]
                 fixed_ips.append({'subnet_id': subnet_id,
                                   'ip_address': ip_addr})

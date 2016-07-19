@@ -1070,6 +1070,16 @@ def port_etcd_data(port):
             ipv4_subnet_ids.append(ip['subnet_id'])
             if ip['gateway'] is not None:
                 data['ipv4_gateway'] = ip['gateway']
+
+    for aap in port['allowed_address_pairs']:
+        ip_addr = str(aap['ip_address'])
+        if ':' in ip_addr:
+            ipv6_nets.append(ip_addr + '/128')
+            ipv6_subnet_ids.append(None)
+        else:
+            ipv4_nets.append(ip_addr + '/32')
+            ipv4_subnet_ids.append(None)
+
     data['ipv4_nets'] = ipv4_nets
     data['ipv6_nets'] = ipv6_nets
     data['ipv4_subnet_ids'] = ipv4_subnet_ids
