@@ -1048,7 +1048,8 @@ def port_etcd_data(port):
             'name': port['interface_name'],
             'mac': port['mac_address'],
             'profile_ids': [with_openstack_sg_prefix(sg_id)
-                            for sg_id in port['security_groups']]}
+                            for sg_id in port['security_groups']],
+            'allowed_address_pairs': port['allowed_address_pairs']}
     # TODO(MD4) Check the old version writes 'profile_id' in a form
     # that translation code in common.validate_endpoint() will work.
 
@@ -1070,6 +1071,15 @@ def port_etcd_data(port):
             ipv4_subnet_ids.append(ip['subnet_id'])
             if ip['gateway'] is not None:
                 data['ipv4_gateway'] = ip['gateway']
+
+    for aap in port['allowed_address_pairs']:
+        if ':' in aap['ip_address']:
+            ipv6_nets.append(aap['ip_address'] + '/128')
+            ipv6_subnet_ids.append(None)
+        else:
+            ipv4_nets.append(aap['ip_address'] + '/32')
+            ipv4_subnet_ids.append(None)
+
     data['ipv4_nets'] = ipv4_nets
     data['ipv6_nets'] = ipv6_nets
     data['ipv4_subnet_ids'] = ipv4_subnet_ids

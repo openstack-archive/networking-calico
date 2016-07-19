@@ -39,6 +39,7 @@ from neutron.common.exceptions import PortNotFound
 from neutron.common.exceptions import SubnetNotFound
 from neutron.common import topics
 from neutron import context as ctx
+from neutron.db.allowed_address_pairs import models as aap_models
 from neutron.db import l3_db
 from neutron.db import models_v2
 from neutron import manager
@@ -1468,6 +1469,17 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             )
         ]
 
+    def get_allowed_addr_pairs_for_port(self, context, port):
+        """Obtains a list of allowed address pairs for a port."""
+        return [
+            {'ip_address': p['ip_address']}
+            for p in context.session.query(
+                aap_models.AllowedAddressPair
+            ).filter_by(
+                port_id=port['id']
+            )
+        ]
+
     def add_extra_port_information(self, context, port):
         """add_extra_port_information
 
@@ -1481,6 +1493,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             context, port
         )
         port['security_groups'] = self.get_security_groups_for_port(
+            context, port
+        )
+        port['allowed_address_pairs'] = self.get_allowed_addr_pairs_for_port(
             context, port
         )
         self.add_port_gateways(port, context)
