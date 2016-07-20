@@ -27,6 +27,7 @@ from calico.etcdutils import EtcdWatcher
 from networking_calico.agent.dhcp_agent import CalicoDhcpAgent
 from networking_calico.agent.dhcp_agent import FakePlugin
 from networking_calico.agent.linux.dhcp import DnsmasqRouted
+from networking_calico.common import config as calico_config
 from neutron.agent.dhcp_agent import register_options
 from neutron.common import constants
 from neutron.tests import base
@@ -57,6 +58,7 @@ class TestDhcpAgent(base.BaseTestCase):
     def setUp(self):
         super(TestDhcpAgent, self).setUp()
         register_options(cfg.CONF)
+        calico_config.register_options(cfg.CONF)
 
     @mock.patch('etcd.Client')
     def test_mainline(self, etcd_client_cls):
