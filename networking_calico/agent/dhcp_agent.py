@@ -39,6 +39,7 @@ from calico.etcdutils import EtcdWatcher
 from calico.etcdutils import safe_decode_json
 
 from networking_calico.agent.linux.dhcp import DnsmasqRouted
+from networking_calico.common import config as calico_config
 
 LOG = logging.getLogger(__name__)
 
@@ -423,7 +424,17 @@ class CalicoEtcdWatcher(EtcdWatcher):
 class SubnetWatcher(EtcdWatcher):
 
     def __init__(self, endpoint_watcher):
-        super(SubnetWatcher, self).__init__('127.0.0.1:4001', SUBNET_DIR)
+        etcd_host = cfg.CONF.calico.etcd_host
+        etcd_port = cfg.CONF.calico.etcd_port
+        etcd_endpoint = "{0}:{1}".format(etcd_host, etcd_port)
+        super(SubnetWatcher, self).__init__(
+            etcd_endpoint,
+            SUBNET_DIR,
+            etcd_scheme=cfg.CONF.calico.etcd_protocol,
+            etcd_key=cfg.CONF.calico.etcd_key_file,
+            etcd_cert=cfg.CONF.calico.etcd_cert_file,
+            etcd_ca=cfg.CONF.calico.etcd_ca_cert_file)
+
         self.endpoint_watcher = endpoint_watcher
         self.register_path(
             SUBNET_DIR + "/<subnet_id>",
@@ -530,6 +541,7 @@ def setup_logging():
 
 def main():
     register_options(cfg.CONF)
+    calico_config.register_options(cfg.CONF)
     common_config.init(sys.argv[1:])
     setup_logging()
     agent = CalicoDhcpAgent()
