@@ -1,3 +1,11 @@
+networking-calico (1:1.2.1-trusty) trusty; urgency=low
+
+  * networking-calico release (from Git commit aa39799).
+    - Ensure that DHCP agent log file directory exists
+    - DHCP agent: don't directly connect different subnets
+
+ -- Neil Jerram <neil@tigera.io>  Wed, 27 Jul 2016 22:31:02 +0100
+
 networking-calico (1:1.2.0-xenial) xenial; urgency=low
 
   * networking-calico release (from Git commit beeb729).
