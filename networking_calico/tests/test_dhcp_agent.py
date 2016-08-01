@@ -86,7 +86,8 @@ class TestDhcpAgent(base.BaseTestCase):
                                  '/calico/dhcp/v1/subnet/v4subnet-1')
                 return EtcdResponse(value=json.dumps({
                     'cidr': '10.28.0.0/24',
-                    'gateway_ip': '10.28.0.1'
+                    'gateway_ip': '10.28.0.1',
+                    'host_routes': []
                 }))
             if 'v6subnet-1' in key:
                 return EtcdResponse(value=json.dumps({
