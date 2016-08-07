@@ -1023,7 +1023,8 @@ def _neutron_rule_to_etcd_rule(rule):
 
 def subnet_etcd_data(subnet):
     data = {'cidr': str(netaddr.IPNetwork(subnet['cidr'])),
-            'gateway_ip': subnet['gateway_ip']}
+            'gateway_ip': subnet['gateway_ip'],
+            'host_routes': subnet['host_routes']}
     if subnet['dns_nameservers']:
         data['dns_servers'] = subnet['dns_nameservers']
     return data
