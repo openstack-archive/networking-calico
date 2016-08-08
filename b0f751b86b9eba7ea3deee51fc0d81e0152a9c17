@@ -1,0 +1,9 @@
+Code-Review+1: Logan V <logan2211@gmail.com>
+Code-Review+2: Shaun Crampton <shaun@tigera.io>
+Workflow+1: Neil Jerram <neil@tigera.io>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 08 Aug 2016 14:31:41 +0000
+Reviewed-on: https://review.openstack.org/349876
+Project: openstack/networking-calico
+Branch: refs/heads/master
