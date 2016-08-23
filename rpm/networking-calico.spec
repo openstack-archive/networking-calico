@@ -4,12 +4,12 @@ Name:           networking-calico
 Summary:        Project Calico networking for OpenStack/Neutron
 Epoch:          1
 Version:        1.2.2
-Release:        1%{?dist}
+Release:        2%{?dist}
 License:        Apache-2
 URL:            http://docs.openstack.org/developer/networking-calico/
 Source0:        networking-calico-%{version}.tar.gz
-Source45:	calico-dhcp-agent.service
-BuildArch:	noarch
+Source45:       calico-dhcp-agent.service
+BuildArch:      noarch
 Group:          Applications/Engineering
 Requires:       python-pbr
 
@@ -78,7 +78,7 @@ fi
 %package -n calico-dhcp-agent
 Group:          Applications/Engineering
 Summary:        Project Calico networking for OpenStack/Neutron
-Requires:       calico-common, networking-calico
+Requires:       calico-common, networking-calico, openstack-neutron-common
 
 %description -n calico-dhcp-agent
 This package provides the Calico DHCP agent.
@@ -92,6 +92,9 @@ This package provides the Calico DHCP agent.
 %if 0%{?el7}
 if [ $1 -eq 1 ] ; then
     # Initial installation
+    # FIXME - dhcp agent should log to /var/log/neutron
+    /bin/mkdir -p /var/log/calico
+    /usr/bin/chown neutron /var/log/calico
     /usr/bin/systemctl daemon-reload
     /usr/bin/systemctl enable calico-dhcp-agent
     /usr/bin/systemctl start calico-dhcp-agent
@@ -111,6 +114,7 @@ fi
 if [ $1 -ge 1 ] ; then
     # Package upgrade, not uninstall
 %if 0%{?el7}
+    /usr/bin/systemctl daemon-reload
     /usr/bin/systemctl condrestart calico-dhcp-agent >/dev/null 2>&1 || :
 %endif
 fi
