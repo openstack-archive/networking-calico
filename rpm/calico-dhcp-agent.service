@@ -3,7 +3,7 @@ Description=Calico DHCP agent
 After=syslog.target network.target
 
 [Service]
-User=root
+User=neutron
 ExecStart=/usr/bin/calico-dhcp-agent --config-file /etc/neutron/neutron.conf
 KillMode=process
 Restart=on-failure
