@@ -156,7 +156,9 @@ EOF
 		    # maintain BIRD config for the cluster.
 		    run_process calico-bird "HOST_IP=$HOST_IP /opt/stack/networking-calico/devstack/auto-bird-conf.sh"
 
-		    # Run the Calico DHCP agent.
+		    # Run the Calico DHCP agent; also ensure that it will be
+		    # able to log to /var/log/calico.
+		    sudo chmod 777 /var/log/calico
 		    run_process calico-dhcp "/usr/local/bin/calico-dhcp-agent --config-file $NEUTRON_CONF"
 
 		    ;;
