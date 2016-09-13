@@ -204,6 +204,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
         self.assertEtcdWrites({
             '/calico/v1/config/InterfacePrefix': 'tap',
             '/calico/v1/config/EndpointReportingEnabled': True,
+            '/calico/v1/config/ClusterGUID': 'uuid-1',
             '/calico/v1/Ready': True,
             '/calico/v1/policy/profile/openstack-sg-SGID-default/rules': {
                 "outbound_rules": [{"dst_ports": ["1:65535"],
@@ -240,6 +241,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
         expected_writes = {
             '/calico/v1/config/InterfacePrefix': 'tap',
             '/calico/v1/config/EndpointReportingEnabled': True,
+            '/calico/v1/config/ClusterGUID': 'uuid-1',
             '/calico/v1/Ready': True,
             '/calico/v1/host/felix-host-1/workload/openstack/instance-1/'
             'endpoint/DEADBEEF-1234-5678':
@@ -738,6 +740,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
         self.assertEtcdWrites({
             '/calico/v1/config/InterfacePrefix': 'tap',
             '/calico/v1/config/EndpointReportingEnabled': True,
+            '/calico/v1/config/ClusterGUID': 'uuid-1',
             '/calico/v1/Ready': True,
             '/calico/v1/policy/profile/openstack-sg-SGID-default/rules': {
                 "outbound_rules": [{"dst_ports": ["1:65535"],
@@ -830,6 +833,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
                 'host_routes': [],
                 'dns_servers': ['172.18.10.55']},
             '/calico/v1/Ready': True,
+            '/calico/v1/config/ClusterGUID': 'uuid-1',
             '/calico/v1/config/EndpointReportingEnabled': True,
             '/calico/v1/config/InterfacePrefix': 'tap',
             '/calico/v1/policy/profile/openstack-sg-SGID-default/rules': {
@@ -1055,6 +1059,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
         self.assertEtcdWrites({
             '/calico/v1/config/InterfacePrefix': 'tap',
             '/calico/v1/config/EndpointReportingEnabled': True,
+            '/calico/v1/config/ClusterGUID': 'uuid-1',
             '/calico/v1/Ready': True,
             '/calico/v1/policy/profile/openstack-sg-SGID-default/rules': {
                 "outbound_rules": [{"dst_ports": ["1:65535"],
@@ -1098,6 +1103,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
         self.assertEtcdWrites({
             '/calico/v1/config/InterfacePrefix': 'tap',
             '/calico/v1/config/EndpointReportingEnabled': True,
+            '/calico/v1/config/ClusterGUID': 'uuid-1',
             '/calico/v1/Ready': True,
             '/calico/v1/policy/profile/openstack-sg-SGID-default/rules': {
                 "outbound_rules": [{"dst_ports": ["1:65535"],

@@ -55,6 +55,11 @@ sys.modules['oslo.config'] = m_oslo.config
 sys.modules['sqlalchemy'] = m_sqlalchemy = mock.Mock()
 sys.modules['sqlalchemy.orm'] = m_sqlalchemy.orm
 sys.modules['sqlalchemy.orm.exc'] = m_sqlalchemy.orm.exc
+sys.modules['uuid'] = m_uuid = mock.MagicMock()
+
+guid = mock.MagicMock()
+guid.get_hex.return_value = 'uuid-1'
+m_uuid.uuid4.return_value = guid
 
 port1 = {'binding:vif_type': 'tap',
          'binding:host_id': 'felix-host-1',
