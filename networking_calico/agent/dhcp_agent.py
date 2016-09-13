@@ -74,11 +74,26 @@ class FakePlugin(object):
 
     """
 
+    def __init__(self, etcd):
+        self.etcd = etcd
+
     def create_dhcp_port(self, port):
         """Support the following DHCP DeviceManager calls.
 
         dhcp_port = self.plugin.create_dhcp_port({'port': port_dict})
         """
+        try:
+            result = self.etcd.client.read(
+                SUBNET_DIR, recursive=True, timeout=5)
+            #data = safe_decode_json(response.value, 'subnet')
+            nodes = result.children
+
+            for node in nodes:
+                subnet_id = node.key.split("/")[-1]
+                LOG.debug("subnet_ {0}: {1}".format(subnet_id, node))
+        except etcd.EtcdKeyNotFound:
+            LOG.warning("No data for subnets")
+
         LOG.debug("create_dhcp_port: %s", port)
         port['port']['id'] = 'dhcp'
 
@@ -513,14 +528,14 @@ class CalicoDhcpAgent(DhcpAgent):
         # DnsmasqRouted class.
         self.dhcp_driver_cls = DnsmasqRouted
 
+        # Watch etcd for any endpoint changes for this host.
+        self.etcd = CalicoEtcdWatcher(self)
+
         # Override the RPC plugin (i.e. proxy to the Neutron database)
         # with a fake plugin.  The DHCP driver code calls when it
         # wants to tell Neutron that it is creating, updating or
         # releasing the DHCP port.
-        self.plugin_rpc = FakePlugin()
-
-        # Watch etcd for any endpoint changes for this host.
-        self.etcd = CalicoEtcdWatcher(self)
+        self.plugin_rpc = FakePlugin(self.etcd)
 
     def run(self):
         """Run the EtcdWatcher loop."""
