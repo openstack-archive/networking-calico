@@ -30,6 +30,7 @@ from networking_calico.agent.dhcp_agent import get_etcd_connection_settings
 from networking_calico.agent.linux.dhcp import DnsmasqRouted
 from networking_calico.common import config as calico_config
 from neutron.agent.dhcp_agent import register_options
+from neutron.agent.linux import dhcp
 from neutron.common import constants
 from neutron.tests import base
 from oslo_config import cfg
@@ -44,10 +45,11 @@ class TestFakePlugin(base.BaseTestCase):
         self.plugin = FakePlugin()
 
     def test_create(self):
-        port = self.plugin.create_dhcp_port({'port': {}})
+        port = self.plugin.create_dhcp_port({'port': {'network_id': 'net-id-0'}})
         self.assertEqual({
+            'network_id': 'net-id-0',
             'device_owner': 'network:dhcp',
-            'id': 'dhcp',
+            'id': 'net-id-0',
             'mac_address': '02:00:00:00:00:00'},
             port)
 
@@ -77,7 +79,7 @@ class TestDhcpAgent(base.BaseTestCase):
             etcd_snapshot_response = mock.Mock()
             etcd_snapshot_response.leaves = []
             agent.etcd._on_snapshot_loaded(etcd_snapshot_response)
-            call_driver.assert_called_with('reload_allocations', mock.ANY)
+            call_driver.assert_not_called()
 
         # Prepare subnet reads for the endpoints that we will notify.
         self.first_workload_read = True
@@ -194,8 +196,8 @@ class TestDhcpAgent(base.BaseTestCase):
             # Check no further etcd reads.
             etcd_client.read.assert_not_called()
 
-            # Check DHCP driver was asked to reload allocations.
-            call_driver.assert_called_with('reload_allocations', mock.ANY)
+            # Check DHCP driver was asked to restart.
+            call_driver.assert_called_with('restart', mock.ANY)
 
             # Notify deletion of the first endpoint.
             agent.etcd.on_endpoint_delete(None,
@@ -208,7 +210,7 @@ class TestDhcpAgent(base.BaseTestCase):
             etcd_client.read.assert_not_called()
 
             # Check DHCP driver was asked to reload allocations.
-            call_driver.assert_called_with('reload_allocations', mock.ANY)
+            call_driver.assert_called_with('restart', mock.ANY)
 
             # Notify another endpoint using a new subnet.
             agent.etcd.on_endpoint_set(EtcdResponse(value=json.dumps({
@@ -242,7 +244,7 @@ class TestDhcpAgent(base.BaseTestCase):
             eventlet.spawn(agent.etcd.loop)
 
             # Report that the subnet watcher noticed a change.
-            agent.etcd.subnet_watcher.on_subnet_set(None, 'some-subnet-X')
+            agent.etcd.on_subnet_set(None, 'some-subnet-X')
             eventlet.sleep(0.2)
 
             # Check DHCP driver was asked to restart.
@@ -299,8 +301,9 @@ class TestDhcpAgent(base.BaseTestCase):
             ])
             etcd_client.read.reset_mock()
 
-            # Check DHCP driver was asked to restart.
-            call_driver.assert_called_with('restart', mock.ANY)
+            # Check DHCP driver was not troubled - because the subnet data was
+            # missing and so the port could not be processed further.
+            call_driver.assert_not_called()
 
     @mock.patch('etcd.Client')
     def test_dir_delete(self, etcd_client_cls):
@@ -380,7 +383,7 @@ class TestDhcpAgent(base.BaseTestCase):
 
         # To test handling of SubnetWatcher's loop exiting, make
         # EtcdWatcher.loop throw an exception.
-        loop_fn.side_effect = Exception
+        loop_fn.side_effect = Exception('from test_kill_agent')
 
         # Create the DHCP agent and allow it to start the SubnetWatcher loop.
         agent = CalicoDhcpAgent()
@@ -473,15 +476,17 @@ class TestDhcpAgent(base.BaseTestCase):
             'endpoint-1'
         )
 
-        # Check expected subnets were read from etcd.
-        etcd_client.read.assert_has_calls([
+        # Check that either the v4 or the v6 subnet was read from etcd.  Since
+        # it's invalid, the processing of the new endpoint stops at that point,
+        # and the other subnet is not read at all.
+        read_calls = etcd_client.read.mock_calls
+        self.assertEqual(1, len(read_calls))
+        self.assertTrue(read_calls[0] in [
             mock.call(datamodel_v1.key_for_subnet('v4subnet-1'),
                       consistent=True),
             mock.call(datamodel_v1.key_for_subnet('v6subnet-1'),
-                      consistent=True)
-        ],
-            any_order=True
-        )
+                      consistent=True),
+        ])
         etcd_client.read.reset_mock()
 
     @mock.patch('etcd.Client')
@@ -551,6 +556,11 @@ class TestDnsmasqRouted(base.BaseTestCase):
         network.id = 'calico'
         network.subnets = [v4subnet, v6subnet]
         network.mtu = 0
+        network.ports = [
+            dhcp.DictModel({'device_id': 'tap1'}),
+            dhcp.DictModel({'device_id': 'tap2'}),
+            dhcp.DictModel({'device_id': 'tap3'}),
+        ]
         device_mgr_cls.return_value.driver.bridged = False
         cmdline = DnsmasqRouted(cfg.CONF,
                                 network,
@@ -569,12 +579,14 @@ class TestDnsmasqRouted(base.BaseTestCase):
             '--dhcp-match=set:ipxe,175',
             '--bind-dynamic',
             '--interface=None',
-            '--interface=tap*',
-            '--bridge-interface=None,tap*',
             '--dhcp-range=set:tag0,10.28.0.0,static,86400s',
             '--dhcp-lease-max=16777216',
             '--conf-file=',
             '--domain=openstacklocal',
             '--dhcp-range=set:tag1,2001:db8:1::,static,off-link,80,86400s',
-            '--enable-ra'],
+            '--enable-ra',
+            '--interface=tap1',
+            '--interface=tap2',
+            '--interface=tap3',
+            '--bridge-interface=None,tap1,tap2,tap3'],
             cmdline)
