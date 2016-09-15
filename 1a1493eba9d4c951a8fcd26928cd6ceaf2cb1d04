@@ -1,0 +1,8 @@
+Code-Review+2: Neil Jerram <neil@tigera.io>
+Workflow+1: Neil Jerram <neil@tigera.io>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Thu, 15 Sep 2016 15:15:42 +0000
+Reviewed-on: https://review.openstack.org/370915
+Project: openstack/networking-calico
+Branch: refs/heads/master
