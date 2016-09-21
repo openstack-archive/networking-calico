@@ -357,7 +357,7 @@ class CalicoTransportEtcd(object):
 
         # Read other config values that should exist.  We will write them only
         # if they're not already (collectively) set as we want them.
-        prefix = None
+        prefix = ''
         reporting_enabled = None
         ready = None
         iface_pfx_key = datamodel_v1.key_for_config('InterfacePrefix')
@@ -369,10 +369,15 @@ class CalicoTransportEtcd(object):
         except etcd.EtcdKeyNotFound:
             LOG.info('%s values are missing', datamodel_v1.CONFIG_DIR)
 
+        prefixes = prefix.split(',')
+        if 'tap' not in prefixes:
+            prefixes.append('tap')
+        prefix_new = ','.join(prefixes)
+
         # Now write the values that need writing.
-        if prefix != 'tap':
+        if prefix != prefix_new:
             LOG.info('%s -> tap', iface_pfx_key)
-            self.client.write(iface_pfx_key, 'tap')
+            self.client.write(iface_pfx_key, prefix_new)
         if reporting_enabled != "true":
             LOG.info('%s -> true', reporting_key)
             self.client.write(reporting_key, 'true')
