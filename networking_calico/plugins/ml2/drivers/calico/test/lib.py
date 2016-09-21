@@ -32,8 +32,8 @@ import sys
 
 _log = logging.getLogger(__name__)
 
-sys.modules['etcd'] = m_etcd = mock.MagicMock()
-sys.modules['neutron'] = m_neutron = mock.MagicMock()
+sys.modules['etcd'] = m_etcd = mock.Mock()
+sys.modules['neutron'] = m_neutron = mock.Mock()
 sys.modules['neutron.agent'] = m_neutron.agent
 sys.modules['neutron.agent.rpc'] = m_neutron.agent.rpc
 sys.modules['neutron.common'] = m_neutron.common
@@ -512,7 +512,7 @@ class Lib(object):
         if type == 'rule':
             # Call security_groups_rule_updated with the new or changed ID.
             mech_calico.security_groups_rule_updated(
-                mock.MagicMock(), mock.MagicMock(), [id]
+                mock.Mock(), mock.Mock(), [id]
             )
 
     def get_port_security_group_bindings(self, context, filters):
@@ -549,7 +549,7 @@ class FixedUUID(object):
         self.uuid4_p = mock.patch('uuid.uuid4')
 
     def __enter__(self):
-        guid = mock.MagicMock()
+        guid = mock.Mock()
         guid.get_hex.return_value = self.uuid
         uuid4 = self.uuid4_p.start()
         uuid4.return_value = guid
