@@ -298,7 +298,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
         self.assertEtcdDeletes(set())
 
         # Delete lib.port1.
-        context = mock.MagicMock()
+        context = mock.Mock()
         context._port = lib.port1
         context._plugin_context.session.query.return_value.filter_by.\
             side_effect = self.port_query
@@ -785,7 +785,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
         self.osdb_subnets = [subnet1, subnet2]
 
         # Notify creation of subnet1, and expect corresponding etcd write.
-        context = mock.MagicMock()
+        context = mock.Mock()
         context.current = subnet1
         self.driver.create_subnet_postcommit(context)
         self.assertEtcdWrites({
