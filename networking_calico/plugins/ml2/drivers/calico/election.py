@@ -25,6 +25,12 @@ import random
 import re
 from urllib3 import Timeout
 
+# Fix urllib3 unvendoring error so that python-etcd can catch exceptions raised
+# by urllib3.  See networking_calico/agent/__init__.py for the full
+# explanation.
+import sys
+if sys.modules["urllib3"].exceptions is not sys.modules["urllib3.exceptions"]:
+    sys.modules["urllib3"].exceptions = sys.modules["urllib3.exceptions"]
 
 try:  # Icehouse, Juno
     from neutron.openstack.common import log
