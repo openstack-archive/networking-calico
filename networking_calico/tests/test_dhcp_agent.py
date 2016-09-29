@@ -22,8 +22,8 @@ import socket
 
 LOG = logging.getLogger(__name__)
 
-from calico import datamodel_v1
-from calico.etcdutils import EtcdWatcher
+from networking_calico import datamodel_v1
+from networking_calico.etcdutils import EtcdWatcher
 from networking_calico.agent.dhcp_agent import CalicoDhcpAgent
 from networking_calico.agent.dhcp_agent import FakePlugin
 from networking_calico.agent.dhcp_agent import get_etcd_connection_settings
