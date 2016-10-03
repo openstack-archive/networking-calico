@@ -1,0 +1,8 @@
+Code-Review+2: Shaun Crampton <shaun@tigera.io>
+Workflow+1: Shaun Crampton <shaun@tigera.io>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 03 Oct 2016 16:53:58 +0000
+Reviewed-on: https://review.openstack.org/380991
+Project: openstack/networking-calico
+Branch: refs/heads/master
