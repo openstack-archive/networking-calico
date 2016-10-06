@@ -125,7 +125,9 @@ class DnsmasqRouted(dhcp.Dnsmasq):
                     options.append(self._format_option(subnet.ip_version,
                                                        i, 'router'))
         return options, subnet_index_map
-
+    def _spawn_or_reload_process(self, reload_with_HUP):
+        self.device_manager.fill_dhcp_udp_checksums(None)
+        super(DnsmasqRouted, self)._spawn_or_reload_process(reload_with_HUP)
 
 class CalicoDeviceManager(dhcp.DeviceManager):
     """Device manager for the default namespace that Calico operates in."""
