@@ -67,6 +67,10 @@ class DnsmasqRouted(dhcp.Dnsmasq):
             LOG.warning('Failed trying to delete interface: %s',
                         self.interface_name)
 
+    def _spawn_or_reload_process(self, reload_with_HUP):
+        self.device_manager.fill_dhcp_udp_checksums(None)
+        super(DnsmasqRouted, self)._spawn_or_reload_process(reload_with_HUP)
+
 
 class CalicoDeviceManager(dhcp.DeviceManager):
     """Device manager for the default namespace that Calico operates in."""
