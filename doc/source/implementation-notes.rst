@@ -75,8 +75,3 @@ contains Calico's Neutron-specific code, comprising:
 - DHCP agent drivers
 
 - a Devstack plugin.
-
-.. note:: Actually the ML2 mechanism driver is not there yet; it is currently
-          still at
-          https://github.com/projectcalico/calico/tree/master/calico/openstack,
-          but planned to move to networking-calico very soon.
