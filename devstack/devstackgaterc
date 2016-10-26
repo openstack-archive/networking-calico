@@ -49,8 +49,8 @@ r="$r|(?:tempest\.api\.compute\.volumes*)"
 # End list of exclusions.
 r="$r)"
 
-# only run test_server_basic_ops
-r="$r(tempest\.scenario\.test_server_basic_ops).*$"
+# Run Tempest scenario tests.
+r="$r(tempest\.scenario).*$"
 
 if [ -z $DEVSTACK_GATE_GRENADE ]; then
     # Do not run the tempest test cases on grenade jobs. By not setting this,
