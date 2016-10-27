@@ -437,6 +437,9 @@ class CalicoEtcdWatcher(etcdutils.EtcdWatcher):
         if ip_version == 6:
             subnet['ipv6_address_mode'] = constants.DHCPV6_STATEFUL
             subnet['ipv6_ra_mode'] = constants.DHCPV6_STATEFUL
+        else:
+            subnet['ipv6_address_mode'] = None
+            subnet['ipv6_ra_mode'] = None
 
         return dhcp.DictModel(subnet)
 
