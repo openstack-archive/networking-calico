@@ -83,6 +83,15 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
         self.reset_etcd_after = None
         self.assert_etcd_writes_deletes = True
 
+        # (asaprykin): Need to call stop explicitly, since this test case
+        # is not inherited from neutron base test case
+        self.m_get_dhcp_port = mock.patch.object(
+            mech_calico.CalicoMechanismDriver, '_get_dhcp_port').start()
+        self.addCleanup(self.m_get_dhcp_port.stop)
+        self.m_update_dhcp_port = mock.patch.object(
+            mech_calico.CalicoMechanismDriver, '_update_dhcp_port').start()
+        self.addCleanup(self.m_update_dhcp_port.stop)
+
     def maybe_reset_etcd(self):
         if self.reset_etcd_after is not None:
             self.reset_etcd_after -= 1
@@ -737,6 +746,10 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
 
     def test_subnet_hooks(self):
         """Test subnet creation, update and deletion hooks."""
+        self.m_get_dhcp_port.return_value = None
+        self.m_update_dhcp_port.return_value = {
+            'id': 'port-id',
+        }
 
         # Allow the etcd transport's resync thread to run.  Expect the usual
         # writes.
@@ -789,6 +802,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
         context.current = subnet1
         self.driver.create_subnet_postcommit(context)
         self.assertEtcdWrites({
+            '/calico/dhcp/v1/port/port-id': {'id': 'port-id'},
             '/calico/dhcp/v1/subnet/subnet-id-10.65.0--24': {
                 'network_id': 'net-id-1',
                 'cidr': '10.65.0.0/24',
@@ -824,6 +838,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
         context.current = subnet2
         self.driver.update_subnet_postcommit(context)
         self.assertEtcdWrites({
+            '/calico/dhcp/v1/port/port-id': {'id': 'port-id'},
             '/calico/dhcp/v1/subnet/subnet-id-10.28.0--24': {
                 'network_id': 'net-id-2',
                 'cidr': '10.28.0.0/24',
