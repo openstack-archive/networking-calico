@@ -517,7 +517,7 @@ class TestDhcpAgent(base.BaseTestCase):
             datamodel_v1.dir_for_host(socket.gethostname()) + '/workload'
         check_provided_args(agent.etcd, expected_key)
 
-        expected_key = datamodel_v1.SUBNET_DIR
+        expected_key = datamodel_v1.DHCP_DIR
         check_provided_args(agent.etcd.subnet_watcher, expected_key)
 
 

@@ -18,6 +18,7 @@ import re
 
 from neutron.agent.linux import dhcp
 from neutron.common import constants
+from neutron_lib import exceptions as n_exc
 from oslo_log import log as logging
 
 
@@ -129,6 +130,14 @@ class DnsmasqRouted(dhcp.Dnsmasq):
 
 class CalicoDeviceManager(dhcp.DeviceManager):
     """Device manager for the default namespace that Calico operates in."""
+
+    def get_device_id(self, network):
+        return 'dhcp-' + network.id
+
+    def _setup_new_dhcp_port(self, network, device_id, dhcp_subnets):
+        # Since DHCP port is created by neutron plugin, this method should
+        # never be called.
+        raise n_exc.Conflict()
 
     def _set_default_route(self, network, device_name):
         pass
