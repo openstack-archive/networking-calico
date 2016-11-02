@@ -700,6 +700,24 @@ class CalicoTransportEtcd(object):
         except etcd.EtcdException as e:
             LOG.debug("Failed to delete %s (%r), giving up.", profile_key, e)
 
+    @_handling_etcd_exceptions
+    def update_dhcp_port(self, port):
+        LOG.info("Write DHCP port %s to etcd", port)
+        self.client.write(
+            datamodel_v1.key_for_dhcp_port(port['id']),
+            json.dumps(port))
+
+    @_handling_etcd_exceptions
+    def delete_dhcp_port(self, port_id):
+        LOG.info("Deleting DHCP port %s", port_id)
+        # Delete the etcd key for this endpoint.
+        key = datamodel_v1.key_for_dhcp_port(port_id)
+        try:
+            self.client.delete(key)
+        except etcd.EtcdKeyNotFound:
+            # Already gone, treat as success.
+            LOG.debug("Cannot delete key %s, does not exist", key)
+
     def _cleanup_workload_tree(self, endpoint_key):
         """_cleanup_workload_tree
 
