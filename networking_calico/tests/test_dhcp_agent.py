@@ -48,12 +48,7 @@ class TestFakePlugin(base.BaseTestCase):
         port = self.plugin.create_dhcp_port({
             'port': {'network_id': 'net-id-0'}
         })
-        self.assertEqual({
-            'network_id': 'net-id-0',
-            'device_owner': 'network:dhcp',
-            'id': 'net-id-0',
-            'mac_address': '02:00:00:00:00:00'},
-            port)
+        self.assertIs(port, None)
 
     def test_release(self):
         self.plugin.release_dhcp_port('calico', 'dhcp')
@@ -329,6 +324,10 @@ class TestDhcpAgent(base.BaseTestCase):
                     'cidr': '2001:db8:1::/80',
                     'gateway_ip': '2001:db8:1::1'
                 }))
+            if datamodel_v1.DHCP_PORT_DIR in key:
+                etcd_response = mock.Mock()
+                etcd_response.leaves = []
+                return etcd_response
 
             eventlet.sleep(10)
             return None
@@ -519,7 +518,7 @@ class TestDhcpAgent(base.BaseTestCase):
             datamodel_v1.dir_for_host(socket.gethostname()) + '/workload'
         check_provided_args(agent.etcd, expected_key)
 
-        expected_key = datamodel_v1.SUBNET_DIR
+        expected_key = datamodel_v1.DHCP_DIR
         check_provided_args(agent.etcd.subnet_watcher, expected_key)
 
 

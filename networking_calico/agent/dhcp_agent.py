@@ -35,7 +35,6 @@ from networking_calico.agent.linux.dhcp import DnsmasqRouted
 from networking_calico.common import config as calico_config
 from networking_calico.common import mkdir_p
 from networking_calico.compat import cfg
-from networking_calico.compat import constants
 from networking_calico.compat import DHCPV6_STATEFUL
 from networking_calico import datamodel_v1
 from networking_calico import etcdutils
@@ -77,33 +76,12 @@ class FakePlugin(object):
     """
 
     def create_dhcp_port(self, port):
-        """Support the following DHCP DeviceManager calls.
-
-        dhcp_port = self.plugin.create_dhcp_port({'port': port_dict})
-        """
-        LOG.debug("create_dhcp_port: %s", port)
-        port['port']['id'] = port['port']['network_id']
-
-        # The following MAC address will be assigned to the Linux dummy
-        # interface that
-        # networking_calico.agent.linux.interface.RoutedInterfaceDriver
-        # creates.  Therefore it will never actually be used or involved in the
-        # sending or receiving of any real data.  Hence it should not matter
-        # that we use a hardcoded value here, and the same value on every
-        # networking-calico compute host.  The '2' bit of the first byte means
-        # 'locally administered', which makes sense for a hardcoded value like
-        # this and distinguishes it from the space of managed MAC addresses.
-        port['port']['mac_address'] = '02:00:00:00:00:00'
-        port['port']['device_owner'] = constants.DEVICE_OWNER_DHCP
-        return dhcp.DictModel(port['port'])
+        """This function should never be called"""
+        raise NotImplementedError("This function should never be called")
 
     def release_dhcp_port(self, network_id, device_id):
-        """Support the following DHCP DeviceManager calls.
-
-        self.plugin.release_dhcp_port(network.id,
-                                      self.get_device_id(network))
-        """
-        LOG.debug("release_dhcp_port: %s %s", network_id, device_id)
+        """This function should never be called"""
+        raise NotImplementedError("This function should never be called")
 
 
 def empty_network(network_id=NETWORK_ID):
@@ -191,6 +169,8 @@ class CalicoEtcdWatcher(etcdutils.EtcdWatcher):
 
         # Subnets that have changed in etcd since when we last read them.
         self.dirty_subnets = set()
+
+        self.dhcp_ports = {}
 
         # Also watch the etcd subnet tree.  When something in that subtree
         # changes, the subnet watcher will tell _this_ watcher to resync.
@@ -382,6 +362,10 @@ class CalicoEtcdWatcher(etcdutils.EtcdWatcher):
             self._fix_network_cache_port_lookup(net.id)
             self.agent.cache.put(net)
 
+        dhcp_port = self.dhcp_ports.get(net.id)
+        if dhcp_port:
+            self.agent.cache.put_port(dhcp_port)
+
         return net.id
 
     def _fix_network_cache_port_lookup(self, network_id):
@@ -438,6 +422,9 @@ class CalicoEtcdWatcher(etcdutils.EtcdWatcher):
         if ip_version == 6:
             subnet['ipv6_address_mode'] = DHCPV6_STATEFUL
             subnet['ipv6_ra_mode'] = DHCPV6_STATEFUL
+        else:
+            subnet['ipv6_address_mode'] = None
+            subnet['ipv6_ra_mode'] = None
 
         return dhcp.DictModel(subnet)
 
@@ -490,6 +477,17 @@ class CalicoEtcdWatcher(etcdutils.EtcdWatcher):
         # need any historical list of dirty subnet IDs.
         self.dirty_subnets = set()
 
+        self.dhcp_ports = {}
+        try:
+            etcd_dhcp_ports = self.client.read(
+                datamodel_v1.DHCP_PORT_DIR, recursive=True)
+        except etcd.EtcdKeyNotFound:
+            LOG.debug("No DHCP ports found")
+        else:
+            for etcd_node in etcd_dhcp_ports.leaves:
+                port = etcdutils.safe_decode_json(etcd_node.value)
+                self.dhcp_ports[port['network_id']] = dhcp.DictModel(port)
+
         # Suppress Dnsmasq updates until we've processed the whole snapshot.
         self.suppress_dnsmasq_updates = True
 
@@ -527,24 +525,31 @@ class CalicoEtcdWatcher(etcdutils.EtcdWatcher):
         # subnet.
         self.dirty_subnets.add(subnet_id)
 
-        # Also schedule a resync so that the handling for existing endpoints is
-        # updated.  (Although it's unlikely that an endpoint's subnet will
-        # change between when the endpoint was created and when it DHCPs, or
-        # that the endpoint will DHCP again later on... but hey.)
+    def on_dhcp_port_set(self, response, port_id):
+        """Handler for DHCP port
+
+        Note: This function is called from SubnetWatcher's eventlet thread.
+        """
+        LOG.info("DHCP port %s created or updated", port_id)
         self.resync_after_current_poll = True
 
 
+# TODO(asaprykin): Rename to DhcpWatcher
 class SubnetWatcher(etcdutils.EtcdWatcher):
 
     def __init__(self, endpoint_watcher):
         watcher_kwargs = get_etcd_connection_settings()
-        watcher_kwargs['key_to_poll'] = datamodel_v1.SUBNET_DIR
+        watcher_kwargs['key_to_poll'] = datamodel_v1.DHCP_DIR
         super(SubnetWatcher, self).__init__(**watcher_kwargs)
 
         self.endpoint_watcher = endpoint_watcher
         self.register_path(
             datamodel_v1.SUBNET_DIR + "/<subnet_id>",
             on_set=self.endpoint_watcher.on_subnet_set
+        )
+        self.register_path(
+            datamodel_v1.DHCP_PORT_DIR + '/<port_id>',
+            on_set=self.endpoint_watcher.on_dhcp_port_set
         )
 
     def loop(self):
