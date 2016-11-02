@@ -532,6 +532,10 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         LOG.debug("Not a VM port: %s" % port)
         return False
 
+    @staticmethod
+    def _is_dhcp_port(port):
+        return port['device_id'].startswith('dhcp-')
+
     # For network and subnet actions we have nothing to do, so we provide these
     # no-op methods.
     def create_network_postcommit(self, context):
@@ -556,8 +560,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         with self._txn_from_context(plugin_context, tag="create-subnet"):
             subnet = self.db.get_subnet(plugin_context, subnet['id'])
             if subnet['enable_dhcp']:
-                # Pass relevant subnet info to the transport layer.
+                dhcp_port = self._update_dhcp_port(plugin_context, subnet)
                 self.transport.subnet_created(subnet)
+                self.transport.update_dhcp_port(dhcp_port)
 
     @retry_on_cluster_id_change
     @requires_state
@@ -571,6 +576,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         plugin_context = context._plugin_context
         with self._txn_from_context(plugin_context, tag="update-subnet"):
             subnet = self.db.get_subnet(plugin_context, subnet['id'])
+            dhcp_port = self._update_dhcp_port(
+                plugin_context, subnet, delete=not subnet['enable_dhcp'])
+
             if subnet['enable_dhcp']:
                 # Pass relevant subnet info to the transport layer.
                 self.transport.subnet_created(subnet)
@@ -578,13 +586,22 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 # Tell transport layer that subnet has been deleted.
                 self.transport.subnet_deleted(subnet['id'])
 
+            if dhcp_port:
+                self.transport.update_dhcp_port(dhcp_port)
+
     @retry_on_cluster_id_change
     @requires_state
     def delete_subnet_postcommit(self, context):
         LOG.info("DELETE_SUBNET_POSTCOMMIT: %s" % context)
 
-        # Pass on to the transport layer.
-        self.transport.subnet_deleted(context.current['id'])
+        subnet = context.current
+        plugin_context = context._plugin_context
+        with self._txn_from_context(plugin_context, tag="delete-subnet"):
+            dhcp_port = self._update_dhcp_port(
+                plugin_context, subnet, delete=True)
+            self.transport.subnet_deleted(context.current['id'])
+            if dhcp_port:
+                self.transport.update_dhcp_port(dhcp_port)
 
     # Idealised method forms.
     @retry_on_cluster_id_change
@@ -655,11 +672,10 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         port = context._port
 
         # Immediately halt processing if this is not an endpoint port.
-        if not self._port_is_endpoint_port(port):
-            return
-
-        # Pass this to the transport layer.
-        self.transport.endpoint_deleted(port)
+        if self._port_is_endpoint_port(port):
+            self.transport.endpoint_deleted(port)
+        elif self._is_dhcp_port(port):
+            self.transport.delete_dhcp_port(port['id'])
 
     @retry_on_cluster_id_change
     @requires_state
@@ -880,6 +896,50 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             # Port unbound, attempt to delete.
             LOG.info("Port disabled, attempting delete if needed.")
             self.transport.endpoint_deleted(port)
+
+    def _get_dhcp_port(self, plugin_context, network_id):
+        device_id = 'dhcp-' + network_id
+        ports = self.db.get_ports(plugin_context, limit=1, filters={
+            'device_owner': constants.DEVICE_OWNER_DHCP,
+            'device_id': device_id,
+        })
+        if ports:
+            return ports[0]
+        return None
+
+    def _update_dhcp_port(self, plugin_context, subnet, delete=False):
+        dhcp_port = self._get_dhcp_port(plugin_context, subnet['network_id'])
+
+        if dhcp_port:
+            fixed_ips = dhcp_port['fixed_ips']
+            if delete:
+                fixed_ips = [fip for fip in fixed_ips
+                             if fip['subnet_id'] != subnet['id']]
+            else:
+                fixed_ips.append({'subnet_id': subnet['id']})
+
+            if fixed_ips:
+                return self.db.update_port(
+                    plugin_context, dhcp_port['id'], {'port': {
+                        'fixed_ips': fixed_ips,
+                    }})
+            else:
+                self.db.delete_port(dhcp_port['id'])
+                return None
+
+        if delete:
+            return None
+
+        port_dict = dict(
+            name='',
+            admin_state_up=True,
+            device_owner=constants.DEVICE_OWNER_DHCP,
+            device_id='dhcp-' + subnet['network_id'],
+            network_id=subnet['network_id'],
+            tenant_id=subnet['tenant_id'],
+            fixed_ips=[dict(subnet_id=subnet['id'])],
+        )
+        return self.db.create_port(plugin_context, {'port': port_dict})
 
     def add_port_gateways(self, port, context):
         """add_port_gateways
