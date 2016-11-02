@@ -34,9 +34,7 @@ from neutron.common import config as common_config
 from neutron.common import constants
 
 from networking_calico.common import mkdir_p
-from networking_calico.datamodel_v1 import dir_for_host
-from networking_calico.datamodel_v1 import key_for_subnet
-from networking_calico.datamodel_v1 import SUBNET_DIR
+from networking_calico import datamodel_v1
 from networking_calico.etcdutils import EtcdWatcher
 from networking_calico.etcdutils import safe_decode_json
 
@@ -158,7 +156,7 @@ class CalicoEtcdWatcher(EtcdWatcher):
     def __init__(self, agent):
         watcher_kwargs = get_etcd_connection_settings()
         watcher_kwargs['key_to_poll'] = \
-            dir_for_host(socket.gethostname()) + "/workload"
+            datamodel_v1.dir_for_host(socket.gethostname()) + "/workload"
         super(CalicoEtcdWatcher, self).__init__(**watcher_kwargs)
         self.agent = agent
         self.suppress_dnsmasq_updates = False
@@ -416,7 +414,7 @@ class CalicoEtcdWatcher(EtcdWatcher):
         LOG.debug("Read subnet %s from etcd", subnet_id)
         self.dirty_subnets.discard(subnet_id)
 
-        subnet_key = key_for_subnet(subnet_id)
+        subnet_key = datamodel_v1.key_for_subnet(subnet_id)
         response = self.client.read(subnet_key, consistent=True)
         data = safe_decode_json(response.value, 'subnet')
         LOG.debug("Subnet data: %s", data)
@@ -539,18 +537,33 @@ class CalicoEtcdWatcher(EtcdWatcher):
         # that the endpoint will DHCP again later on... but hey.)
         self.resync_after_current_poll = True
 
+    def on_dhcp_port_set(self, response, port_id):
+        """Handler for DHCP port
 
+        Note: This function is called from SubnetWatcher's eventlet thread."""
+        LOG.info("DHCP port %s created or updated", port_id)
+
+
+
+        self.resync_after_current_poll = True
+
+
+# TODO(asaprykin): Rename to DHCP watcher
 class SubnetWatcher(EtcdWatcher):
 
     def __init__(self, endpoint_watcher):
         watcher_kwargs = get_etcd_connection_settings()
-        watcher_kwargs['key_to_poll'] = SUBNET_DIR
+        watcher_kwargs['key_to_poll'] = datamodel_v1.DHCP_DIR
         super(SubnetWatcher, self).__init__(**watcher_kwargs)
 
         self.endpoint_watcher = endpoint_watcher
         self.register_path(
-            SUBNET_DIR + "/<subnet_id>",
+            datamodel_v1.SUBNET_DIR + "/<subnet_id>",
             on_set=self.endpoint_watcher.on_subnet_set
+        )
+        self.register_path(
+            datamodel_v1.DHCP_PORT_DIR + '/<port_id>',
+            on_set=self.endpoint_watcher.on_dhcp_port_set
         )
 
     def loop(self):
