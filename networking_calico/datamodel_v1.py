@@ -77,6 +77,7 @@ ENDPOINT_STATUS_ERROR = "error"
 # Information intended for use by the DHCP agent.
 DHCP_DIR = ROOT_DIR + "/dhcp" + DHCP_VERSION
 SUBNET_DIR = DHCP_DIR + "/subnet"
+DHCP_PORT_DIR = DHCP_DIR + "/port"
 
 
 def dir_for_host(hostname):
@@ -106,6 +107,10 @@ def key_for_config(config_name):
 
 def key_for_subnet(subnet_id):
     return SUBNET_DIR + "/%s" % subnet_id
+
+
+def key_for_dhcp_port(port_id):
+    return '{0}/{1}'.format(DHCP_PORT_DIR, port_id)
 
 
 def get_endpoint_id_from_key(key):
