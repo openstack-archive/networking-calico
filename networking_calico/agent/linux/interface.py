@@ -32,15 +32,6 @@ class RoutedInterfaceDriver(interface.LinuxInterfaceDriver):
     def __init__(self, conf):
         super(RoutedInterfaceDriver, self).__init__(conf)
 
-    @property
-    def use_gateway_ips(self):
-        # Routed networking does not bridge across compute hosts or
-        # network nodes, so the DHCP port can use the gateway IP
-        # address of each subnet for which it is handing out
-        # addresses, instead of requiring a fresh Neutron-allocated IP
-        # address.
-        return True
-
     def plug_new(self, network_id, port_id, device_name, mac_address,
                  bridge=None, namespace=None, prefix=None, mtu=None):
         """Plugin the interface."""
@@ -60,7 +51,7 @@ class RoutedInterfaceDriver(interface.LinuxInterfaceDriver):
         ns_dummy.link.set_up()
 
     def init_l3(self, device_name, ip_cidrs, namespace=None,
-                preserve_ips=[], gateway=None, extra_subnets=[]):
+                preserve_ips=None, gateway=None, extra_subnets=None):
         """L3 initialization for RoutedInterfaceDriver.
 
         Extend LinuxInterfaceDriver.init_l3 to remove the subnet

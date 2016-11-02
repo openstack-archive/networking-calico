@@ -35,8 +35,6 @@ import eventlet
 from eventlet.semaphore import Semaphore
 from neutron.agent import rpc as agent_rpc
 from neutron.common import constants
-from neutron.common.exceptions import PortNotFound
-from neutron.common.exceptions import SubnetNotFound
 from neutron.common import topics
 from neutron import context as ctx
 from neutron.db import l3_db
@@ -44,6 +42,9 @@ from neutron.db import models_v2
 from neutron import manager
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.drivers import mech_agent
+# TODO(asaprykin): Check for compatibility with previous version
+from neutron_lib import constants as lib_constants
+from neutron_lib import exceptions as n_exc
 from sqlalchemy import exc as sa_exc
 
 # Monkeypatch import
@@ -559,6 +560,10 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         LOG.debug("Not a VM port: %s" % port)
         return False
 
+    @staticmethod
+    def _is_dhcp_port(port):
+        return port['device_id'].startswith('dhcp-')
+
     # For network and subnet actions we have nothing to do, so we provide these
     # no-op methods.
     def create_network_postcommit(self, context):
@@ -583,8 +588,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         with self._txn_from_context(plugin_context, tag="create-subnet"):
             subnet = self.db.get_subnet(plugin_context, subnet['id'])
             if subnet['enable_dhcp']:
-                # Pass relevant subnet info to the transport layer.
+                dhcp_port = self._update_dhcp_port(plugin_context, subnet)
                 self.transport.subnet_created(subnet)
+                self.transport.update_dhcp_port(dhcp_port)
 
     @retry_on_cluster_id_change
     @requires_state
@@ -598,6 +604,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         plugin_context = context._plugin_context
         with self._txn_from_context(plugin_context, tag="update-subnet"):
             subnet = self.db.get_subnet(plugin_context, subnet['id'])
+            dhcp_port = self._update_dhcp_port(
+                plugin_context, subnet, delete=not subnet['enable_dhcp'])
+
             if subnet['enable_dhcp']:
                 # Pass relevant subnet info to the transport layer.
                 self.transport.subnet_created(subnet)
@@ -605,13 +614,22 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 # Tell transport layer that subnet has been deleted.
                 self.transport.subnet_deleted(subnet['id'])
 
+            if dhcp_port:
+                self.transport.update_dhcp_port(dhcp_port)
+
     @retry_on_cluster_id_change
     @requires_state
     def delete_subnet_postcommit(self, context):
         LOG.info("DELETE_SUBNET_POSTCOMMIT: %s" % context)
 
-        # Pass on to the transport layer.
-        self.transport.subnet_deleted(context.current['id'])
+        subnet = context.current
+        plugin_context = context._plugin_context
+        with self._txn_from_context(plugin_context, tag="delete-subnet"):
+            dhcp_port = self._update_dhcp_port(
+                plugin_context, subnet, delete=True)
+            self.transport.subnet_deleted(context.current['id'])
+            if dhcp_port:
+                self.transport.update_dhcp_port(dhcp_port)
 
     # Idealised method forms.
     @retry_on_cluster_id_change
@@ -631,43 +649,8 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         port = context._port
 
         # Immediately halt processing if this is not an endpoint port.
-        if not self._port_is_endpoint_port(port):
-            return
-
-        # If the port binding VIF type is 'unbound', this port doesn't actually
-        # need to be networked yet. We can simply return immediately.
-        if port['binding:vif_type'] == 'unbound':
-            LOG.info("Creating unbound port: no work required.")
-            return
-
-        plugin_context = context._plugin_context
-        with self._txn_from_context(plugin_context, tag="create-port"):
-            # First, regain the current port. This protects against concurrent
-            # writes breaking our state.
-            port = self.db.get_port(plugin_context, port['id'])
-
-            # Next, fill out other information we need on the port.
-            port = self.add_extra_port_information(
-                plugin_context, port
-            )
-
-            # Next, we need to work out what security profiles apply to this
-            # port and grab information about them.
-            profiles = self.get_security_profiles(
-                plugin_context, port
-            )
-
-            # Write data for those profiles into etcd.
-            for profile in profiles:
-                self.transport.write_profile_to_etcd(profile)
-
-            # Pass this to the transport layer.
-            # Implementation note: we could arguably avoid holding the
-            # transaction for this length and instead release it here, then
-            # use atomic CAS. The problem there is that we potentially have to
-            # repeatedly respin and regain the transaction. Let's not do that
-            # for now, and performance test to see if it's a problem later.
-            self.transport.endpoint_created(port)
+        if self._port_is_endpoint_port(port):
+            self._create_endpoint(context, port)
 
     @retry_on_cluster_id_change
     @requires_state
@@ -685,42 +668,8 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         original = context.original
 
         # Abort early if we're managing non-endpoint ports.
-        if not self._port_is_endpoint_port(port):
-            return
-
-        # If this port update is purely for a status change, don't do anything:
-        # we don't care about port statuses.
-        if port_status_change(port, original):
-            LOG.info('Called for port status change, no action.')
-            return
-
-        # Now, re-read the port.
-        plugin_context = context._plugin_context
-        with self._txn_from_context(plugin_context, tag="update-port"):
-            port = self.db.get_port(plugin_context, port['id'])
-
-            # Now, fork execution based on the type of update we're performing.
-            # There are a few:
-            # - a port becoming bound (binding vif_type from unbound to bound);
-            # - a port becoming unbound (binding vif_type from bound to
-            #   unbound);
-            # - an Icehouse migration (binding host id changed and port bound);
-            # - an update (port bound at all times);
-            # - a change to an unbound port (which we don't care about, because
-            #   we do nothing with unbound ports).
-            if port_bound(port) and not port_bound(original):
-                self._port_bound_update(context, port)
-            elif port_bound(original) and not port_bound(port):
-                self._port_unbound_update(context, original)
-            elif original['binding:host_id'] != port['binding:host_id']:
-                LOG.info("Icehouse migration")
-                self._icehouse_migration_step(context, port, original)
-            elif port_bound(original) and port_bound(port):
-                LOG.info("Port update")
-                self._update_port(plugin_context, port)
-            else:
-                LOG.info("Update on unbound port: no action")
-                pass
+        if self._port_is_endpoint_port(port):
+            self._update_endpoint(context, port, original)
 
     @retry_on_cluster_id_change
     @requires_state
@@ -751,11 +700,10 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         port = context._port
 
         # Immediately halt processing if this is not an endpoint port.
-        if not self._port_is_endpoint_port(port):
-            return
-
-        # Pass this to the transport layer.
-        self.transport.endpoint_deleted(port)
+        if self._port_is_endpoint_port(port):
+            self.transport.endpoint_deleted(port)
+        elif self._is_dhcp_port(port):
+            self.transport.delete_dhcp_port(port['id'])
 
     @retry_on_cluster_id_change
     @requires_state
@@ -815,6 +763,77 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             LOG.debug("Not using mysqldb driver, skipping db-access lock")
             with context.session.begin(subtransactions=True) as txn:
                 yield txn
+
+    def _create_endpoint(self, context, port):
+        # If the port binding VIF type is 'unbound', this port doesn't actually
+        # need to be networked yet. We can simply return immediately.
+        if port['binding:vif_type'] == 'unbound':
+            LOG.info("Creating unbound port: no work required.")
+            return
+
+        plugin_context = context._plugin_context
+        with self._txn_from_context(plugin_context, tag="create-port"):
+            # First, regain the current port. This protects against concurrent
+            # writes breaking our state.
+            port = self.db.get_port(plugin_context, port['id'])
+
+            # Next, fill out other information we need on the port.
+            port = self.add_extra_port_information(
+                plugin_context, port
+            )
+
+            # Next, we need to work out what security profiles apply to this
+            # port and grab information about them.
+            profiles = self.get_security_profiles(
+                plugin_context, port
+            )
+
+            # Write data for those profiles into etcd.
+            for profile in profiles:
+                self.transport.write_profile_to_etcd(profile)
+
+            # Pass this to the transport layer.
+            # Implementation note: we could arguably avoid holding the
+            # transaction for this length and instead release it here, then
+            # use atomic CAS. The problem there is that we potentially have to
+            # repeatedly respin and regain the transaction. Let's not do that
+            # for now, and performance test to see if it's a problem later.
+            self.transport.endpoint_created(port)
+
+    def _update_endpoint(self, context, port, original):
+        # If this port update is purely for a status change, don't do anything:
+        # we don't care about port statuses.
+        if port_status_change(port, original):
+            LOG.info('Called for port status change, no action.')
+            return
+
+        # Now, re-read the port.
+        plugin_context = context._plugin_context
+        with self._txn_from_context(plugin_context, tag="update-port"):
+            port = self.db.get_port(plugin_context, port['id'])
+
+            # Now, fork execution based on the type of update we're performing.
+            # There are a few:
+            # - a port becoming bound (binding vif_type from unbound to bound);
+            # - a port becoming unbound (binding vif_type from bound to
+            #   unbound);
+            # - an Icehouse migration (binding host id changed and port bound);
+            # - an update (port bound at all times);
+            # - a change to an unbound port (which we don't care about, because
+            #   we do nothing with unbound ports).
+            if port_bound(port) and not port_bound(original):
+                self._port_bound_update(context, port)
+            elif port_bound(original) and not port_bound(port):
+                self._port_unbound_update(context, original)
+            elif original['binding:host_id'] != port['binding:host_id']:
+                LOG.info("Icehouse migration")
+                self._icehouse_migration_step(context, port, original)
+            elif port_bound(original) and port_bound(port):
+                LOG.info("Port update")
+                self._update_port(plugin_context, port)
+            else:
+                LOG.info("Update on unbound port: no action")
+                pass
 
     def _port_unbound_update(self, context, port):
         """_port_unbound_update
@@ -905,6 +924,50 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             # Port unbound, attempt to delete.
             LOG.info("Port disabled, attempting delete if needed.")
             self.transport.endpoint_deleted(port)
+
+    def _get_dhcp_port(self, plugin_context, network_id):
+        device_id = 'dhcp-' + network_id
+        ports = self.db.get_ports(plugin_context, limit=1, filters={
+            'device_owner': lib_constants.DEVICE_OWNER_DHCP,
+            'device_id': device_id,
+        })
+        if ports:
+            return ports[0]
+        return None
+
+    def _update_dhcp_port(self, plugin_context, subnet, delete=False):
+        dhcp_port = self._get_dhcp_port(plugin_context, subnet['network_id'])
+
+        if dhcp_port:
+            fixed_ips = dhcp_port['fixed_ips']
+            if delete:
+                fixed_ips = [fip for fip in fixed_ips
+                             if fip['subnet_id'] != subnet['id']]
+            else:
+                fixed_ips.append({'subnet_id': subnet['id']})
+
+            if fixed_ips:
+                return self.db.update_port(
+                    plugin_context, dhcp_port['id'], {'port': {
+                        'fixed_ips': fixed_ips,
+                    }})
+            else:
+                self.db.delete_port(dhcp_port['id'])
+                return None
+
+        if delete:
+            return None
+
+        port_dict = dict(
+            name='',
+            admin_state_up=True,
+            device_owner=lib_constants.DEVICE_OWNER_DHCP,
+            device_id='dhcp-' + subnet['network_id'],
+            network_id=subnet['network_id'],
+            tenant_id=subnet['tenant_id'],
+            fixed_ips=[dict(subnet_id=subnet['id'])],
+        )
+        return self.db.create_port(plugin_context, {'port': port_dict})
 
     def add_port_gateways(self, port, context):
         """add_port_gateways
@@ -1112,7 +1175,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             with self._txn_from_context(context, tag="resync-subnets-changed"):
                 try:
                     neutron_subnet = self.db.get_subnet(context, subnet.id)
-                except SubnetNotFound:
+                except n_exc.SubnetNotFound:
                     # The subnet got deleted.
                     LOG.info("Failed to resync deleted subnet %s", subnet.id)
                     continue
@@ -1270,7 +1333,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             with self._txn_from_context(context, tag="resync-ports-changed"):
                 try:
                     port = self.db.get_port(context, endpoint.id)
-                except PortNotFound:
+                except n_exc.PortNotFound:
                     # The endpoint got deleted.
                     LOG.info("Failed to update deleted port %s", endpoint.id)
                     continue

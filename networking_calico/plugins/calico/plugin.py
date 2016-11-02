@@ -14,6 +14,8 @@
 
 from neutron.db import l3_db
 from neutron.plugins.ml2.plugin import Ml2Plugin
+from neutron_lib import exceptions as exc
+from oslo_utils import excutils
 
 try:
     # Icehouse, Juno
@@ -63,3 +65,63 @@ class CalicoPlugin(Ml2Plugin, l3_db.L3_NAT_db_mixin):
                                                     context)
 
         return old_floatingip, new_floatingip
+
+    def _update_dhcp_port(self, context, subnet, delete=False):
+        device_id = 'dhcp-' + subnet['network_id']
+
+        dhcp_port = None
+        ports = self.get_ports(context, filters={'device_id': device_id})
+        if len(ports) > 1:
+            raise exc.Conflict()
+        elif ports:
+            dhcp_port = ports[0]
+
+        if dhcp_port:
+            fixed_ips = dhcp_port['fixed_ips']
+            if delete:
+                fixed_ips = [fip for fip in fixed_ips
+                             if fip['subnet_id'] != subnet['id']]
+            else:
+                fixed_ips.append({'subnet_id': subnet['id']})
+
+            if fixed_ips:
+                return self.update_port(
+                    context, dhcp_port['id'], {'port': {
+                        'fixed_ips': fixed_ips,
+                    }})
+            else:
+                self.delete_port(dhcp_port['id'])
+        else:
+            port_dict = dict(
+                name='',
+                admin_state_up=True,
+                device_id=device_id,
+                network_id=subnet['network_id'],
+                tenant_id=subnet['tenant_id'],
+                fixed_ips=[dict(subnet_id=subnet['id'])],
+            )
+            return self.create_port(context, {'port': port_dict})
+
+    def create_subnet(self, context, subnet):
+        subnet = super(CalicoPlugin, self).create_subnet(
+            context, subnet)
+        try:
+            self._update_dhcp_port(context, subnet['network_id'])
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                self.delete_subnet(context, subnet['id'])
+        return subnet
+
+    def update_subnet(self, context, id_, subnet):
+        old_subnet = self.get_subnet(context, id_)
+        new_subnet = super(CalicoPlugin, self).update_subnet(
+            context, id_, subnet)
+        if new_subnet['enable_dhcp'] != old_subnet['enable_dhcp']:
+            self._update_dhcp_port(context, new_subnet,
+                                   delete=old_subnet['enable_dhcp'])
+        return new_subnet
+
+    def delete_subnet(self, context, id_):
+        subnet = self.get_subnet(context, id_)
+        self._update_dhcp_port(context, subnet, delete=True)
+        return super(CalicoPlugin, self).delete_subnet(context, id_)
