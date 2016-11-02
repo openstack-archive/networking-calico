@@ -49,6 +49,7 @@ r="$r|(?:tempest\.api\.compute\.volumes*)"
 # exclude the other Tempest scenario tests that don't work with Calico yet
 r="$r|(?:tempest\.scenario\.test_network_v6\.TestGettingAddress.*)"
 r="$r|(?:tempest\.scenario\.test_network_basic_ops\.TestNetworkBasicOps\.test_network_basic_ops.*)"
+r="$r|(?:tempest\.scenario\.test_network_basic_ops\.TestNetworkBasicOps\.test_hotplug_nic.*)"
 r="$r|(?:tempest\.scenario\.test_network_basic_ops\.TestNetworkBasicOps\.test_router_rescheduling.*)"
 r="$r|(?:tempest\.scenario\.test_network_basic_ops\.TestNetworkBasicOps\.test_update_router_admin_state.*)"
 r="$r|(?:tempest\.scenario\.test_security_groups_basic_ops\.TestSecurityGroupsBasicOps\.test_multiple_security_groups.*)"
