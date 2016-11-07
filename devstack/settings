@@ -14,7 +14,7 @@ fi
 
 if $CALICO_COMPUTE_ONLY; then
     # Explicitly enable the services that we need for compute only.
-    ENABLED_SERVICES=n-cpu,neutron,calico-dhcp,n-api-meta,calico-felix,calico-bird
+    ENABLED_SERVICES=n-cpu,neutron,calico-dhcp,n-api-meta,calico-bird
 else
     # Disable services that Devstack starts by default, but that we
     # don't need for Calico networking demonstration: 'dstat' is a
@@ -38,11 +38,6 @@ else
     disable_service q-l3
     disable_service q-meta
 
-    # When we later launch Felix (Calico's agent), we do that as a
-    # service named 'calico-felix', and that only works if Devstack
-    # thinks that 'calico-felix' is enabled.  So do that here.
-    enable_service calico-felix
-
     # 'calico-bird' is an additional service that automatically
     # generates and maintains correct full mesh BIRD config, in a
     # multi-node Calico/DevStack cluster.
@@ -60,7 +55,3 @@ Q_AGENT=calico-felix
 
 # Calico does not use namespaces.
 Q_USE_NAMESPACE=False
-
-# Test Felix floating IP fix.
-FELIX_REPO=https://github.com/neiljerram/felix.git
-FELIX_BRANCH=fip-output-dnat-1.4-unpin-pycparser
