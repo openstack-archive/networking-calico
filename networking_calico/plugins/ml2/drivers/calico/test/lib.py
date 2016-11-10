@@ -37,8 +37,9 @@ sys.modules['neutron'] = m_neutron = mock.MagicMock()
 sys.modules['neutron.agent'] = m_neutron.agent
 sys.modules['neutron.agent.rpc'] = m_neutron.agent.rpc
 sys.modules['neutron.common'] = m_neutron.common
-sys.modules['neutron.common.constants'] = m_constants = \
-    m_neutron.common.constants
+m_constants = m_neutron.common.constants
+sys.modules['neutron_lib.constants'] = m_constants
+sys.modules['neutron.common.constants'] = m_constants
 sys.modules['neutron.common.exceptions'] = m_neutron.common.exceptions
 sys.modules['neutron.db'] = m_neutron.db
 sys.modules['neutron.openstack'] = m_neutron.openstack
