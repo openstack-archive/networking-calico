@@ -24,7 +24,6 @@ import json
 import netaddr
 import re
 import socket
-import uuid
 import weakref
 
 # OpenStack imports.
@@ -37,6 +36,8 @@ try:  # Icehouse, Juno
     from neutron.openstack.common import log
 except ImportError:  # Kilo
     from oslo_log import log
+
+from oslo_utils import uuidutils
 
 # Calico imports.
 import etcd
@@ -344,8 +345,7 @@ class CalicoTransportEtcd(object):
             # idempotently into the datastore. The prevExist=False creates the
             # value (safely with CaS) if it doesn't exist.
             LOG.info('ClusterGUID not set yet (%s)', cluster_guid_key)
-            guid = uuid.uuid4()
-            guid_string = guid.get_hex()
+            guid_string = uuidutils.generate_uuid()
             try:
                 self.client.write(cluster_guid_key,
                                   guid_string,
