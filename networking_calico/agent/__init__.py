@@ -66,8 +66,8 @@ import urllib3.exceptions       # noqa
 # raises.  But the monkey-patching performed by distributions' modification of
 # the requests code can mess that up.
 #
-# So, here we check for that mistake, and correct it.  Note that that equally
-# means that we are breaking requests somehow - but that doesn't matter because
+# So, here we check for that mistake, and correct it.  Note that equally means
+# that we are breaking requests somehow - but that doesn't matter because
 # the Calico DHCP agent doesn't actually execute any requests code.  (To be
 # clear: the Calico DHCP agent imports a slew of Neutron utility modules, which
 # in turn import other Neutron and Oslo and even Keystone modules, and so on,
