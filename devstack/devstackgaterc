@@ -70,3 +70,5 @@ fi
 
 # Don't run Tempest tests in parallel.
 export TEMPEST_CONCURRENCY=1
+
+export OVERRIDE_DEVSTACK_PROJECT_BRANCH=stable/mitaka
