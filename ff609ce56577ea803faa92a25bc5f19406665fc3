@@ -1,0 +1,9 @@
+Code-Review+2: Ihar Hrachyshka <ihrachys@redhat.com>
+Code-Review+1: venkatamahesh <Venkata.Kotha@infinite.com>
+Workflow+1: Neil Jerram <neil@tigera.io>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Sun, 27 Nov 2016 10:31:38 +0000
+Reviewed-on: https://review.openstack.org/402700
+Project: openstack/networking-calico
+Branch: refs/heads/master
