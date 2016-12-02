@@ -19,7 +19,7 @@ test.test_datamodel_v1
 Test data model key calculations etc.
 """
 
-import logging
+from oslo_log import log as logging
 import unittest
 
 from networking_calico.datamodel_v1 import dir_for_host

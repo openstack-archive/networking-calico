@@ -24,10 +24,9 @@ class TestConfig(unittest.TestCase):
         config.register_options(cfg.CONF, additional_options=[add_opt])
         self.assertEqual(cfg.CONF['calico']['test_option'], 'test')
 
-
+from oslo_log import log as logging
 from collections import namedtuple
 import copy
-import logging
 import mock
 import re
 

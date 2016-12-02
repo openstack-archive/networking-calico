@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from oslo_log import log as logging
 import random
-
 import etcd
 import functools
 import json
-import logging
 import re
 from socket import timeout as SocketTimeout
 import time

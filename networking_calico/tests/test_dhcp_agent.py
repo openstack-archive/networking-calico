@@ -13,10 +13,10 @@
 #    under the License.
 
 from collections import namedtuple
+from oslo_log import log as logging
 import etcd
 import eventlet
 import json
-import logging
 import mock
 import socket
 

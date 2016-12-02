@@ -18,9 +18,10 @@ calico.test.test_monotonic
 
 Test for monotonic clock functions.
 """
-import logging
-import time
+
+from oslo_log import log as logging
 from unittest import TestCase
+import time
 
 from networking_calico.monotonic import monotonic_time
 

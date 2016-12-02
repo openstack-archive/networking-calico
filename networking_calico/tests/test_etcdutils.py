@@ -19,7 +19,7 @@ test_etcdutils
 Tests for etcd utility function.
 """
 
-import logging
+from oslo_log import log as logging
 import types
 import unittest
 

@@ -18,12 +18,12 @@ networking_calico.plugins.ml2.drivers.calico.test.test_plugin_etcd
 
 Unit test for the Calico/OpenStack Plugin using etcd transport.
 """
+from oslo_log import log as logging
 import copy
 import json
 import unittest
 
 import eventlet
-import logging
 import mock
 
 import networking_calico.plugins.ml2.drivers.calico.test.lib as lib
