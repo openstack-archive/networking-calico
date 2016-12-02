@@ -15,9 +15,9 @@
 """
 Stub version of the etcd interface.
 """
-import eventlet
+from oslo_log import log as logging
 from eventlet.event import Event
-import logging
+import eventlet
 
 # Logger
 log = logging.getLogger(__name__)

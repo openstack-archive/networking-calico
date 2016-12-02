@@ -18,10 +18,10 @@ networking_calico.plugins.ml2.drivers.calico.test.lib
 
 Common code for Neutron driver UT.
 """
+from oslo_log import log as logging
 import eventlet
 import eventlet.queue
 import inspect
-import logging
 import mock
 import sys
 
@@ -383,7 +383,7 @@ class Lib(object):
 
     def setUp_logging(self):
         """Setup to intercept and display logging by the code under test."""
-        import logging
+        from oslo_log import log as logging
         mech_calico.LOG = logging.getLogger(
             'networking_calico.plugins.ml2.drivers.calico.mech_calico'
         )

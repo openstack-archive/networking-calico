@@ -16,9 +16,8 @@
 Test election code.
 """
 
-
+from oslo_log import log as logging
 import eventlet
-import logging
 import mock
 import sys
 
