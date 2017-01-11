@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Copyright (c) 2014, 2015 Metaswitch Networks
 # Copyright (c) 2013 OpenStack Foundation
