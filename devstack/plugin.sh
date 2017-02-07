@@ -139,13 +139,13 @@ if [ "${Q_AGENT}" = calico-felix ]; then
 		    # Update qemu configuration (shouldn't be anything
 		    # in there so safe to blow away)
 		    sudo sh -c "cat > /etc/libvirt/qemu.conf" << EOF
-user = "root"
-group = "root"
+clear_emulator_capabilities = 0
 cgroup_device_acl = [
     "/dev/null", "/dev/full", "/dev/zero",
     "/dev/random", "/dev/urandom",
     "/dev/ptmx", "/dev/kvm", "/dev/kqemu",
     "/dev/rtc", "/dev/hpet", "/dev/net/tun",
+    "/dev/vfio/vfio",
 ]
 EOF
 
