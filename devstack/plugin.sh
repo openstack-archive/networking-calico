@@ -93,7 +93,7 @@ if [ "${Q_AGENT}" = calico-felix ]; then
 		    echo Calico plugin: pre-install
 
 		    # Add Calico PPA as a package source.
-		    sudo apt-add-repository -y ppa:project-calico/calico-2.0
+		    sudo apt-add-repository -y ppa:project-calico/felix-2.1-testing
 		    REPOS_UPDATED=False
 
 		    # Also add BIRD project PPA as a package source.
