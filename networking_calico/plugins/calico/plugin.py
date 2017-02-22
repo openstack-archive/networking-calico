@@ -28,6 +28,22 @@ class CalicoPlugin(Ml2Plugin, l3_db.L3_NAT_db_mixin):
         # Add the ability to handle floating IPs.
         self._supported_extension_aliases.extend(["router"])
 
+        # Suppress the Neutron server's DHCP agent scheduling, if
+        # dhcp_agents_per_network is 0.  This is useful because it suppresses
+        # many WARNING logs that would otherwise appear, but that are actually
+        # spurious in a Calico/OpenStack deployment.
+        #
+        # So, a Calico/OpenStack deployer who knows that they are using the
+        # Calico DHCP agent (instead of the Neutron DHCP agent), and who wants
+        # a cleaner Neutron server log, can set dhcp_agents_per_network to 0 to
+        # suppress those spurious WARNING logs.
+        #
+        # Longer term, if the Calico DHCP agent worked with all the OpenStack
+        # releases that we support, we could perhaps do this unconditionally.
+        # But currently the Neutron DHCP agent is still needed with Kilo.
+        if cfg.CONF.dhcp_agents_per_network == 0:
+            self._supported_extension_aliases.remove("dhcp_agent_scheduler")
+
         # Set ML2 options so the user doesn't have to.
         LOG.info("Forcing ML2 mechanism_drivers to 'calico'")
         cfg.CONF.set_override('mechanism_drivers', ['calico'], group='ml2')
