@@ -104,6 +104,12 @@ EOF
 		    # at the etcd server.
 		    iniset $NEUTRON_CONF calico etcd_host $SERVICE_HOST
 		    iniset $NEUTRON_CONF calico etcd_port $ETCD_PORT
+
+		    # Suppress the Neutron server's DHCP agent scheduling, so
+		    # as also to suppress associated WARNING logs that are
+		    # spurious in a Calico/OpenStack deployment using the
+		    # Calico DHCP agent.
+		    iniset $NEUTRON_CONF DEFAULT dhcp_agents_per_network 0
 		    ;;
 
 		extra)
