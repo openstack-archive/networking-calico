@@ -162,6 +162,11 @@ EOF
 		    # Propagate ENABLE_DEBUG_LOG_LEVEL to neutron.conf, so that
 		    # it applies to the Calico DHCP agent on each compute node.
 		    iniset $NEUTRON_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
+
+		    # Configure the Neutron server not to do DHCP network
+		    # scheduling.  We don't need this, so we can save some
+		    # cycles and warnings logs.
+		    iniset $NEUTRON_CONF DEFAULT network_auto_schedule false
 		    ;;
 
 		extra)
