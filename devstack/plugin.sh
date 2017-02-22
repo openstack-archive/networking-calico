@@ -120,6 +120,12 @@ EOF
 		    # Give Neutron the admin role so that it can look up
 		    # project name and parent_id fields in the Keystone DB.
 		    openstack role add admin --user neutron --project service --user-domain Default --project-domain Default
+
+		    # Suppress the Neutron server's DHCP agent scheduling, so
+		    # as also to suppress associated WARNING logs that are
+		    # spurious in a Calico/OpenStack deployment using the
+		    # Calico DHCP agent.
+		    iniset $NEUTRON_CONF DEFAULT dhcp_agents_per_network 0
 		    ;;
 
 		extra)
