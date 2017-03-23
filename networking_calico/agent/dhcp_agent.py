@@ -23,12 +23,12 @@ import sys
 
 import eventlet
 
-from neutron.agent.common import config
 from neutron.agent.dhcp.agent import DhcpAgent
 from neutron.agent.dhcp_agent import register_options
 from neutron.agent.linux import dhcp
 from neutron.common import config as common_config
 from neutron.common import constants as neutron_constants
+from neutron.conf.agent import common as config
 
 from networking_calico.agent.linux.dhcp import DnsmasqRouted
 from networking_calico.common import config as calico_config
