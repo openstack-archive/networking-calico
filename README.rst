@@ -25,3 +25,5 @@ features with Calico, please see http://docs.projectcalico.org/master.
 * Documentation: http://docs.projectcalico.org/master
 * Source: http://git.openstack.org/cgit/openstack/networking-calico
 * Bugs: http://bugs.launchpad.net/networking-calico
+
+Just testing our pull request build infrastructure...
