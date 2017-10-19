@@ -1,0 +1,40 @@
+- project:
+    name: openstack/networking-calico
+    check:
+      jobs:
+        - tempest-dsvm-networking-calico
+    gate:
+      jobs:
+        - tempest-dsvm-networking-calico
+    periodic:
+      jobs:
+        - periodic-tempest-dsvm-networking-calico-master
+
+- job:
+    name: tempest-dsvm-networking-calico
+    parent: legacy-dsvm-base
+    run: playbooks/legacy/tempest-dsvm-networking-calico/run
+    post-run: playbooks/legacy/tempest-dsvm-networking-calico/post
+    timeout: 7800
+    required-projects:
+      - openstack-infra/devstack-gate
+      - openstack/networking-calico
+      - openstack/tempest
+    irrelevant-files:
+      - ^(test-|)requirements.txt$
+      - ^setup.cfg$
+
+- job:
+    name: periodic-tempest-dsvm-networking-calico-master
+    parent: legacy-dsvm-base
+    run: playbooks/legacy/periodic-tempest-dsvm-networking-calico-master/run
+    post-run: playbooks/legacy/periodic-tempest-dsvm-networking-calico-master/post
+    timeout: 7800
+    branches: master
+    required-projects:
+      - openstack-infra/devstack-gate
+      - openstack/networking-calico
+      - openstack/tempest
+    irrelevant-files:
+      - ^(test-|)requirements.txt$
+      - ^setup.cfg$
