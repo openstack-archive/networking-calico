@@ -67,6 +67,7 @@ from networking_calico.compat import log
 from networking_calico.compat import n_exc
 from networking_calico.compat import plugin_dir
 from networking_calico import datamodel_v1
+from networking_calico import datamodel_v3
 from networking_calico.logutils import logging_exceptions
 from networking_calico.monotonic import monotonic_time
 from networking_calico.plugins.ml2.drivers.calico import t_etcd
@@ -672,7 +673,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
         # Pass this to the transport layer.
         self.transport.endpoint_deleted(port)
-        datamodel_v3.del("WorkloadEndpoint", port['id'])
+        datamodel_v3.delete("WorkloadEndpoint", port['id'])
 
     @retry_on_cluster_id_change
     @requires_state
@@ -813,7 +814,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         """
         LOG.info("Port becoming unbound: destroy.")
         self.transport.endpoint_deleted(port)
-        datamodel_v3.del("WorkloadEndpoint", port['id'])
+        datamodel_v3.delete("WorkloadEndpoint", port['id'])
 
     def _port_bound_update(self, context, port):
         """_port_bound_update
@@ -897,7 +898,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             # Port unbound, attempt to delete.
             LOG.info("Port disabled, attempting delete if needed.")
             self.transport.endpoint_deleted(port)
-            datamodel_v3.del("WorkloadEndpoint", port['id'])
+            datamodel_v3.delete("WorkloadEndpoint", port['id'])
 
     def add_port_gateways(self, port, context):
         """add_port_gateways
@@ -1254,7 +1255,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         for endpoint in ports_to_delete:
             try:
                 if v3_datamodel:
-                    datamodel_v3.del("WorkloadEndpoint", endpoint.key)
+                    datamodel_v3.delete("WorkloadEndpoint", endpoint.key)
                 else:
                     self.transport.atomic_delete_endpoint(endpoint)
             except (etcd.EtcdCompareFailed, etcd.EtcdKeyNotFound):

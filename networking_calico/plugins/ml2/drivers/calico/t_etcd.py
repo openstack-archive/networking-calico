@@ -33,6 +33,7 @@ from networking_calico.common import config as calico_config
 from networking_calico.compat import cfg
 from networking_calico.compat import log
 from networking_calico import datamodel_v1
+from networking_calico import datamodel_v3
 from networking_calico import etcdutils
 from networking_calico.plugins.ml2.drivers.calico.election import Elector
 
@@ -553,7 +554,7 @@ class CalicoTransportEtcd(object):
         )
         name = with_openstack_sg_prefix(profile.id)
 
-        datamodel_v3.del("Profile", name)
+        datamodel_v3.delete("Profile", name)
 
     def _cleanup_workload_tree(self, endpoint_key):
         """_cleanup_workload_tree
