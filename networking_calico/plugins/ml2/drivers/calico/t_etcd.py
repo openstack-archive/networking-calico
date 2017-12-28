@@ -324,57 +324,61 @@ class CalicoTransportEtcd(object):
         """
         LOG.info("Providing Felix configuration")
 
-        # First create the ClusterGUID, if it is not already set.
-        cluster_guid_key = datamodel_v1.key_for_config('ClusterGUID')
-        try:
-            cluster_guid = self.client.read(cluster_guid_key).value
-            LOG.info('ClusterGUID is %s', cluster_guid)
-        except etcd.EtcdKeyNotFound:
-            # Generate and write a globally unique cluster GUID.  Write it
-            # idempotently into the datastore. The prevExist=False creates the
-            # value (safely with CaS) if it doesn't exist.
-            LOG.info('ClusterGUID not set yet (%s)', cluster_guid_key)
-            guid = uuid.uuid4()
-            guid_string = guid.get_hex()
-            try:
-                self.client.write(cluster_guid_key,
-                                  guid_string,
-                                  prevExist=False)
-            except etcd.EtcdAlreadyExist:
-                LOG.info('ClusterGUID is now set - another orchestrator or' +
-                         ' Neutron server instance must have just written it')
-                pass
+        # Get existing global ClusterInformation and FelixConfiguration.  We
+        # will add to these, rather than trampling on anything that may already
+        # be there.
+        cluster_info = datamodel_v3.get("ClusterInformation", "default")
+        rewrite_cluster_info = False
+        LOG.info("Read ClusterInformation: %s", cluster_info)
+        felix_config = datamodel_v3.get("FelixConfiguration", "default")
+        rewrite_felix_config = False
+        LOG.info("Read FelixConfiguration: %s", felix_config)
 
-        # Read other config values that should exist.  We will write them only
-        # if they're not already (collectively) set as we want them.
-        prefix = None
-        reporting_enabled = None
-        ready = None
-        iface_pfx_key = datamodel_v1.key_for_config('InterfacePrefix')
-        reporting_key = datamodel_v1.key_for_config('EndpointReportingEnabled')
-        try:
-            prefix = self.client.read(iface_pfx_key).value
-            reporting_enabled = self.client.read(reporting_key).value
-            ready = self.client.read(datamodel_v1.READY_KEY).value
-        except etcd.EtcdKeyNotFound:
-            LOG.info('%s values are missing', datamodel_v1.CONFIG_DIR)
+        # Generate a cluster GUID if there isn't one already.
+        if not cluster_info.get(datamodel_v3.CLUSTER_GUID):
+            cluster_info[datamodel_v3.CLUSTER_GUID] = uuid.uuid4().get_hex()
+            rewrite_cluster_info = True
 
-        prefixes = prefix.split(',') if prefix else []
+        # Add "openstack" to the cluster type, unless there already.
+        cluster_type = cluster_info.get(datamodel_v3.CLUSTER_TYPE, "")
+        if cluster_type:
+            if "openstack" not in cluster_type:
+                cluster_info[datamodel_v3.CLUSTER_TYPE] = cluster_type + ",openstack"
+                rewrite_cluster_info = True
+        else:
+            cluster_info[datamodel_v3.CLUSTER_TYPE] = "openstack"
+            rewrite_cluster_info = True
+
+        # TODO(nj): Do we need to ensure that the Calico version field is set?
+        # It may be that we don't need this for Calico/OpenStack operation.
+
+        # Set the datastore to ready, if it isn't already.
+        if not cluster_info.get(datamodel_v3.DATASTORE_READY, False):
+            cluster_info[datamodel_v3.DATASTORE_READY] = True
+            rewrite_cluster_info = True
+
+        # Enable endpoint reporting.
+        if not felix_config.get(datamodel_v3.ENDPOINT_REPORTING_ENABLED, False):
+            felix_config[datamodel_v3.ENDPOINT_REPORTING_ENABLED] = True
+            rewrite_felix_config = True
+
+        # Ensure that interface prefixes include 'tap'.
+        interface_prefix = felix_config.get(datamodel_v3.INTERFACE_PREFIX)
+        prefixes = interface_prefix.split(',') if interface_prefix else []
         if 'tap' not in prefixes:
             prefixes.append('tap')
-        prefix_new = ','.join(prefixes)
+            felix_config[datamodel_v3.INTERFACE_PREFIX] = ','.join(prefixes)
+            rewrite_felix_config = True
 
-        # Now write the values that need writing.
-        if prefix != prefix_new:
-            LOG.info('%s -> %s', iface_pfx_key, prefix_new)
-            self.client.write(iface_pfx_key, prefix_new)
-        if reporting_enabled != "true":
-            LOG.info('%s -> true', reporting_key)
-            self.client.write(reporting_key, 'true')
-        if ready != 'true':
-            # TODO(nj) Set this flag only once we're really ready!
-            LOG.info('%s -> true', datamodel_v1.READY_KEY)
-            self.client.write(datamodel_v1.READY_KEY, 'true')
+        # Rewrite FelixConfiguration, if we changed anything above.
+        if rewrite_felix_config:
+            LOG.info("New FelixConfiguration: %s", felix_config)
+            datamodel_v3.put("FelixConfiguration", "default", felix_config)
+
+        # Rewrite ClusterInformation, if we changed anything above.
+        if rewrite_cluster_info:
+            LOG.info("New ClusterInformation: %s", cluster_info)
+            datamodel_v3.put("ClusterInformation", "default", cluster_info)
 
     @_handling_etcd_exceptions
     def get_subnet_data(self, subnet):
