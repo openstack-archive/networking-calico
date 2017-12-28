@@ -245,7 +245,7 @@ class CalicoTransportEtcd(object):
     def subnet_deleted(self, subnet_id):
         """Delete data from etcd for a subnet that is no longer wanted."""
         LOG.info("Deleting subnet %s", subnet_id)
-        # Delete the etcd key for this endpoint.
+        # Delete the etcd key for this subnet.
         key = datamodel_v1.key_for_subnet(subnet_id)
         try:
             self.client.delete(key)
