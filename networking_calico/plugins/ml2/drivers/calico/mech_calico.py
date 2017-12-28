@@ -1378,16 +1378,6 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         agree.
         """
         for etcd_profile in profiles_to_reconcile:
-            # Get the data from etcd.
-            try:
-                etcd_profile = self.transport.get_profile_data(etcd_profile)
-            except etcd.EtcdKeyNotFound:
-                # The profile is gone. That's fine.
-                LOG.info(
-                    "Failed to update deleted profile %s", etcd_profile.id
-                )
-                continue
-
             # Get the data from Neutron.
             with self._txn_from_context(context, tag="resync-prof-changed"):
                 rules = self.db.get_security_group_rules(
@@ -1406,8 +1396,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 try:
                     self.transport.write_profile_to_etcd(
                         neutron_profile,
-                        prev_rules_index=etcd_profile.rules_modified_index,
-                        prev_tags_index=etcd_profile.tags_modified_index,
+                        prev_index=etcd_profile.modified_index,
                     )
                 except (etcd.EtcdCompareFailed, etcd.EtcdKeyNotFound):
                     # If someone wrote to etcd they probably have more recent
@@ -1550,31 +1539,17 @@ def port_bound(port):
 def profiles_match(etcd_profile, neutron_profile):
     """profiles_match
 
-    Given a set of Neutron security group rules and a Profile read from etcd,
+    Given a set of Neutron security group rules and a Profile read from etcdv3,
     compare if they're the same.
 
-    :param etcd_profile: A Profile object from etcd.
+    :param etcd_profile: A Profile object from etcdv3.
     :param neutron_profile: A SecurityProfile object from Neutron.
     :returns: True if the rules are identical, False otherwise.
     """
-    # Convert the etcd data into in-memory data structures.
-    try:
-        etcd_rules = json.loads(etcd_profile.rules_data)
-        etcd_tags = json.loads(etcd_profile.tags_data)
-    except (ValueError, TypeError):
-        # If the JSON data is bad, log it then treat this as not matching
-        # Neutron.
-        LOG.exception("Bad JSON data in key %s", etcd_profile.key)
-        return False
+    # Convert the Neutron profile to a ProfileSpec dict.
+    neutron_group_spec = t_etcd.profile_spec(neutron_profile)
 
-    # Do the same conversion for the Neutron profile.
-    neutron_group_rules = t_etcd.profile_rules(neutron_profile)
-    neutron_group_tags = t_etcd.profile_tags(neutron_profile)
-
-    return (
-        (etcd_rules == neutron_group_rules) and
-        (etcd_tags == neutron_group_tags)
-    )
+    return (etcd_profile.spec == neutron_group_spec)
 
 
 def felix_agent_state(hostname, start_flag=False):
