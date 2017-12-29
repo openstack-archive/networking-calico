@@ -769,7 +769,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             # repeatedly respin and regain the transaction. Let's not do that
             # for now, and performance test to see if it's a problem later.
             self.transport.endpoint_created(port)
-            datamodel_v3.put("WorkloadEndpoint", port['id'], endpoint_spec(port))
+            datamodel_v3.put("WorkloadEndpoint",
+                             port['id'],
+                             endpoint_spec(port))
 
     def _update_endpoint(self, context, port, original):
         # If this port update is purely for a status change, don't do anything:
@@ -893,7 +895,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
             # Now write the new endpoint data for the port.
             self.transport.endpoint_created(port)
-            datamodel_v3.put("WorkloadEndpoint", port['id'], endpoint_spec(port))
+            datamodel_v3.put("WorkloadEndpoint",
+                             port['id'],
+                             endpoint_spec(port))
         else:
             # Port unbound, attempt to delete.
             LOG.info("Port disabled, attempting delete if needed.")
@@ -1152,7 +1156,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             for result in datamodel_v3.get_all("WorkloadEndpoint"):
                 name, spec, modified_index = result
                 LOG.debug("Found endpoint %s", name)
-                endpoints.append(Endpoint(
+                endpoints.append(t_etcd.Endpoint(
                     id=spec.endpoint,
                     key=name,
                     modified_index=modified_index,
@@ -1241,7 +1245,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 # etcd.
                 port = self.add_extra_port_information(context, port)
                 if v3_datamodel:
-                    datamodel_v3.put("WorkloadEndpoint", port['id'], endpoint_spec(port))
+                    datamodel_v3.put("WorkloadEndpoint",
+                                     port['id'],
+                                     endpoint_spec(port))
                 else:
                     self.transport.endpoint_created(port)
 
@@ -1281,7 +1287,8 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                     endpoint = self.transport.get_endpoint_data(endpoint)
                 except etcd.EtcdKeyNotFound:
                     # The endpoint is gone. That's fine.
-                    LOG.info("Failed to update deleted endpoint %s", endpoint.id)
+                    LOG.info("Failed to update deleted endpoint %s",
+                             endpoint.id)
                     continue
 
             with self._txn_from_context(context, tag="resync-ports-changed"):
@@ -1526,7 +1533,7 @@ def endpoint_spec(port):
         'endpoint': port['id'],
         'interfaceName': port['interface_name'],
         'mac': port['mac_address'],
-        'profiles': [with_openstack_sg_prefix(sg_id)
+        'profiles': [t_etcd.with_openstack_sg_prefix(sg_id)
                      for sg_id in port['security_groups']]
     }
     # TODO(MD4) Check the old version writes 'profile_id' in a form

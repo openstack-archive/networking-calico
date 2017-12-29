@@ -16,6 +16,7 @@
 import etcd
 from etcd3gw.client import Etcd3Client
 from etcd3gw.utils import _encode
+import json
 
 from networking_calico.compat import cfg
 from networking_calico.compat import log
@@ -45,11 +46,11 @@ def put(resource_kind, name, spec, prev_index=None):
     }
     if _is_namespaced(resource_kind):
         value['metadata']['namespace'] = 'openstack'
-    value_as_string = json.dumps(value)
     LOG.debug("etcdv3 put key=%s value=%s", key, value)
+    value_as_string = json.dumps(value)
     if prev_index:
         base64_key = _encode(key)
-        base64_value = _encode(value)
+        base64_value = _encode(value_as_string)
         result = client.transaction({
             'compare': [{
                 'key': base64_key,
@@ -68,7 +69,7 @@ def put(resource_kind, name, spec, prev_index=None):
         LOG.debug("transaction result %s", result)
         succeeded = result.get('succeeded', False)
     else:
-        succeeded = client.put(key, value)
+        succeeded = client.put(key, value_as_string)
     return succeeded
 
 
@@ -87,7 +88,7 @@ def get_all(resource_kind):
     client = _get_client()
     prefix = _build_key(resource_kind, '')
     results = client.get_prefix(prefix)
-    LOG.debug("etcdv3 get_prefix key=%s results=%s", key, len(results))
+    LOG.debug("etcdv3 get_prefix %s results=%s", prefix, len(results))
     tuples = []
     for result in results:
         value, item = result

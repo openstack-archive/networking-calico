@@ -321,7 +321,8 @@ class CalicoTransportEtcd(object):
         cluster_type = cluster_info.get(datamodel_v3.CLUSTER_TYPE, "")
         if cluster_type:
             if "openstack" not in cluster_type:
-                cluster_info[datamodel_v3.CLUSTER_TYPE] = cluster_type + ",openstack"
+                cluster_info[datamodel_v3.CLUSTER_TYPE] = \
+                    cluster_type + ",openstack"
                 rewrite_cluster_info = True
         else:
             cluster_info[datamodel_v3.CLUSTER_TYPE] = "openstack"
@@ -336,7 +337,8 @@ class CalicoTransportEtcd(object):
             rewrite_cluster_info = True
 
         # Enable endpoint reporting.
-        if not felix_config.get(datamodel_v3.ENDPOINT_REPORTING_ENABLED, False):
+        if not felix_config.get(datamodel_v3.ENDPOINT_REPORTING_ENABLED,
+                                False):
             felix_config[datamodel_v3.ENDPOINT_REPORTING_ENABLED] = True
             rewrite_felix_config = True
 
