@@ -831,7 +831,7 @@ def _neutron_rule_to_etcd_rule(rule):
     etcd format.
     """
     ethertype = rule['ethertype']
-    etcd_rule = {}
+    etcd_rule = {'action': 'Allow'}
     # Map the ethertype field from Neutron to etcd format.
     etcd_rule['ipVersion'] = {'IPv4': 4,
                               'IPv6': 6}[ethertype]
