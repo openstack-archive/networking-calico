@@ -93,7 +93,7 @@ if [ "${Q_AGENT}" = calico-felix ]; then
 		    echo Calico plugin: pre-install
 
 		    # Add Calico master PPA as a package source.
-		    sudo apt-add-repository -y ppa:project-calico/calico-2.6
+		    sudo apt-add-repository -y ppa:project-calico/master
 		    REPOS_UPDATED=False
 
 		    # Also add BIRD project PPA as a package source.
@@ -116,7 +116,7 @@ if [ "${Q_AGENT}" = calico-felix ]; then
 		    install_package bird
 
 		    # Install and configure etcd.
-		    install_configure_etcd
+		    #install_configure_etcd
 
 		    # Install the Calico agent.
 		    install_package calico-felix
