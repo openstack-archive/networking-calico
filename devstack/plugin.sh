@@ -2,77 +2,6 @@
 # Devstack plugin code for Calico
 # ===============================
 
-function install_configure_etcd {
-
-    # Install etcd from package sources (=> our PPA).
-    install_package etcd
-
-    # Stop the etcd service:
-    sudo service etcd stop || true
-
-    # Delete any existing etcd database:
-    sudo rm -rf /var/lib/etcd/*
-
-    # Mount a RAM disk at /var/lib/etcd:
-    sudo mount -t tmpfs -o size=512m tmpfs /var/lib/etcd
-
-    # Add the following to the bottom of /etc/fstab so that the RAM
-    # disk gets reinstated at boot time:
-    # tmpfs /var/lib/etcd tmpfs nodev,nosuid,noexec,nodiratime,size=512M 0 0
-
-    IP=`hostname -I | awk '{print $1}'`
-
-    # Edit /etc/init/etcd.conf: Find the line which begins exec
-    # /usr/bin/etcd and edit it, substituting for <controller_fqdn>
-    # and <controller_ip> appropriately.
-    if $CALICO_COMPUTE_ONLY; then
-	# Configure an etcd proxy.
-	if test -f /etc/init/etcd.conf; then
-	    # upstart configuration
-	    sudo sed -i "s/exec.*/exec \/usr\/bin\/etcd --proxy on \
-  --initial-cluster \"$SERVICE_HOST=http:\/\/$SERVICE_HOST:2380\"/" /etc/init/etcd.conf
-	else
-	    # systemd configuration
-	    etcd_cfg=`mktemp -t etcd.XXXXXX`
-	    cat >${etcd_cfg} <<EOF
-ETCD_PROXY=on
-ETCD_INITIAL_CLUSTER="$SERVICE_HOST=http://$SERVICE_HOST:2380"
-EOF
-	    sudo mv -f ${etcd_cfg} /etc/default/etcd
-	fi
-    else
-	# Configure an etcd master node.
-	if test -f /etc/init/etcd.conf; then
-	    # upstart configuration
-	    sudo sed -i "s/exec.*/exec \/usr\/bin\/etcd --name=\"$HOSTNAME\" \
-  --advertise-client-urls=\"http:\/\/$IP:2379,http:\/\/$IP:4001\" \
-  --listen-client-urls=\"http:\/\/0.0.0.0:2379,http:\/\/0.0.0.0:4001\" \
-  --listen-peer-urls \"http:\/\/0.0.0.0:2380\" \
-  --initial-advertise-peer-urls \"http:\/\/$IP:2380\" \
-  --initial-cluster-token \"$TOKEN\" \
-  --initial-cluster \"$HOSTNAME=http:\/\/$IP:2380\" \
-  --initial-cluster-state \"new\"/" /etc/init/etcd.conf
-	else
-	    # systemd configuration
-	    etcd_cfg=`mktemp -t etcd.XXXXXX`
-	    cat >${etcd_cfg} <<EOF
-ETCD_NAME="$HOSTNAME"
-ETCD_ADVERTISE_CLIENT_URLS="http://$IP:2379,http://$IP:4001"
-ETCD_LISTEN_CLIENT_URLS="http://0.0.0.0:2379,http://0.0.0.0:4001"
-ETCD_LISTEN_PEER_URLS="http://0.0.0.0:2380"
-ETCD_INITIAL_ADVERTISE_PEER_URLS="http://$IP:2380"
-ETCD_INITIAL_CLUSTER="$HOSTNAME=http://$IP:2380"
-ETCD_INITIAL_CLUSTER_STATE="new"
-ETCD_INITIAL_CLUSTER_TOKEN="$TOKEN"
-EOF
-	    sudo mv -f ${etcd_cfg} /etc/default/etcd
-	fi
-    fi
-
-    # Start the etcd service:
-    sudo service etcd start
-}
-
 mode=$1				# stack, unstack or clean
 phase=$2			# pre-install, install, post-config or extra
 
@@ -114,9 +43,6 @@ if [ "${Q_AGENT}" = calico-felix ]; then
 
 		    # Install BIRD.
 		    install_package bird
-
-		    # Install and configure etcd.
-		    #install_configure_etcd
 
 		    # Install the Calico agent.
 		    install_package calico-felix
