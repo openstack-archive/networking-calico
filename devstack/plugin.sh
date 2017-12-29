@@ -109,7 +109,7 @@ EOF
 		    # Run script to automatically generate and
 		    # maintain BIRD config for the cluster.
 		    run_process calico-bird \
-                      "${DEST}/networking-calico/devstack/auto-bird-conf.sh ${HOST_IP}"
+                      "${DEST}/networking-calico/devstack/auto-bird-conf.sh ${HOST_IP} ${ETCD_BIN_DIR}/etcdctl"
 
 		    # Run the Calico DHCP agent.
 		    sudo mkdir /var/log/neutron || true
