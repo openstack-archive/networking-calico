@@ -116,7 +116,7 @@ if [ "${Q_AGENT}" = calico-felix ]; then
 		    install_package bird
 
 		    # Install and configure etcd.
-		    install_configure_etcd
+		    #install_configure_etcd
 
 		    # Install the Calico agent.
 		    install_package calico-felix
