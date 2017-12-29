@@ -62,7 +62,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
 
         # Mock out config.
         lib.m_compat.cfg.CONF.calico.etcd_host = "localhost"
-        lib.m_compat.cfg.CONF.calico.etcd_port = 4001
+        lib.m_compat.cfg.CONF.calico.etcd_port = 2379
         lib.m_compat.cfg.CONF.calico.etcd_cert_file = None
         lib.m_compat.cfg.CONF.calico.etcd_ca_cert_file = None
         lib.m_compat.cfg.CONF.calico.etcd_key_file = None
@@ -1014,7 +1014,7 @@ class TestPluginEtcd(lib.Lib, unittest.TestCase):
         self.assertEqual([mock.call(ca_cert='ca-cert-file',
                                     cert=('cert-file', 'key-file'),
                                     host='localhost',
-                                    port=4001,
+                                    port=2379,
                                     protocol='https')],
                          lib.m_etcd.Client.mock_calls
                          )
@@ -1158,7 +1158,7 @@ class TestDriverStatusReporting(lib.Lib, unittest.TestCase):
 
         # Mock out config.
         lib.m_compat.cfg.CONF.calico.etcd_host = "localhost"
-        lib.m_compat.cfg.CONF.calico.etcd_port = 4001
+        lib.m_compat.cfg.CONF.calico.etcd_port = 2379
 
     def test_felix_agent_state(self):
         self.assertEqual(
@@ -1357,7 +1357,7 @@ class TestCalicoEtcdWatcher(unittest.TestCase):
     def setUp(self):
         # Mock out config.
         lib.m_compat.cfg.CONF.calico.etcd_host = "localhost"
-        lib.m_compat.cfg.CONF.calico.etcd_port = 4001
+        lib.m_compat.cfg.CONF.calico.etcd_port = 2379
         lib.m_compat.cfg.CONF.calico.etcd_key_file = None
         lib.m_compat.cfg.CONF.calico.etcd_cert_file = None
         lib.m_compat.cfg.CONF.calico.etcd_ca_cert_file = None
@@ -1373,7 +1373,7 @@ class TestCalicoEtcdWatcher(unittest.TestCase):
         self.assertEqual([mock.call(ca_cert='ca-cert-file',
                                     cert=('cert-file', 'key-file'),
                                     host='localhost',
-                                    port=4001,
+                                    port=2379,
                                     protocol='https',
                                     expected_cluster_id=None)],
                          lib.m_etcd.Client.mock_calls)
