@@ -50,6 +50,7 @@ if [ "${Q_AGENT}" = calico-felix ]; then
 [global]
 DatastoreType = etcdv3
 EtcdEndpoints = http://${SERVICE_HOST}:${ETCD_PORT}
+LogSeverityScreen = debug
 EOF
 		    install_package calico-felix
 
@@ -117,6 +118,8 @@ EOF
 		    run_process calico-dhcp \
 		      "/usr/local/bin/calico-dhcp-agent --config-file $NEUTRON_CONF"
 
+		    run_process felix-logger \
+		      "/bin/journalctl -u calico-felix -f" "" "root"
 		    ;;
 
 		*)
