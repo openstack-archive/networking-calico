@@ -18,7 +18,7 @@ fi
 
 if $CALICO_COMPUTE_ONLY; then
     # Explicitly enable the services that we need for compute only.
-    ENABLED_SERVICES=n-cpu,neutron,calico-dhcp,n-api-meta,calico-bird,etcd3
+    ENABLED_SERVICES=n-cpu,neutron,calico-dhcp,n-api-meta,calico-bird
 else
     # Use Devstack to install etcd3.  This plugin had its own code for
     # installing etcd, but that code only works for etcd2, so it is
