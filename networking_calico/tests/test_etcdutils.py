@@ -218,7 +218,7 @@ class TestEtcdClientOwner(unittest.TestCase):
         owner = EtcdClientOwner(["localhost"])
         assert owner
         self.assertEqual(m_client.mock_calls,
-                         [call(host="localhost", port=2379,
+                         [call(host="localhost", port=4001,
                                expected_cluster_id=None,
                                cert=None, ca_cert=None, protocol="http")])
 
@@ -249,7 +249,7 @@ class TestEtcdWatcher(unittest.TestCase):
             "networking_calico.etcdutils.EtcdWatcher.reconnect"
         )
         self.m_reconnect = self.reconnect_patch.start()
-        self.watcher = EtcdWatcher(["foobar:2379"], "/calico")
+        self.watcher = EtcdWatcher(["foobar:4001"], "/calico")
         self.m_client = Mock()
         self.watcher.client = self.m_client
         self.m_dispatcher = Mock(spec=PathDispatcher)

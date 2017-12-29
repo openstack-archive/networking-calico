@@ -142,7 +142,7 @@ class EtcdClientOwner(object):
                 port = int(port)
             else:
                 host = addr
-                port = 2379
+                port = 4001
             self.etcd_hosts.append((host, port))
         self.etcd_scheme = etcd_scheme
         self.etcd_key = etcd_key
