@@ -88,6 +88,11 @@ EOF
 		    # Propagate ENABLE_DEBUG_LOG_LEVEL to neutron.conf, so that
 		    # it applies to the Calico DHCP agent on each compute node.
 		    iniset $NEUTRON_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
+
+		    # Point the Calico DHCP agent and mechanism driver
+		    # at the etcd server.
+		    iniset $NEUTRON_CONF calico etcd_host $SERVICE_HOST
+		    iniset $NEUTRON_CONF calico etcd_port $ETCD_PORT
 		    ;;
 
 		extra)
