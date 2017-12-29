@@ -142,7 +142,7 @@ class EtcdClientOwner(object):
                 port = int(port)
             else:
                 host = addr
-                port = 4001
+                port = 2379
             self.etcd_hosts.append((host, port))
         self.etcd_scheme = etcd_scheme
         self.etcd_key = etcd_key
@@ -237,10 +237,9 @@ class EtcdWatcher(EtcdClientOwner):
                 self.reconnect(copy_cluster_id=False)
                 self._on_pre_resync()
                 try:
-                    # Load initial dump from etcd.  First just get all the
-                    # endpoints and profiles by id.  The response contains a
-                    # generation ID allowing us to then start polling for
-                    # updates without missing any.
+                    # Get an initial snapshot of everything under the requested
+                    # <key_to_poll>.  The response contains a generation ID
+                    # allowing us to then poll for updates without missing any.
                     initial_dump = self.load_initial_dump()
                     _log.info("Loaded snapshot from etcd cluster %s, "
                               "processing it...",
