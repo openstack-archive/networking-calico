@@ -45,6 +45,12 @@ if [ "${Q_AGENT}" = calico-felix ]; then
 		    install_package bird
 
 		    # Install the Calico agent.
+		    sudo mkdir -p /etc/calico
+		    sudo sh -c "cat > /etc/calico/felix.cfg" << EOF
+[global]
+DatastoreType = etcdv3
+EtcdEndpoints = http://${SERVICE_HOST}:${ETCD_PORT}
+EOF
 		    install_package calico-felix
 
 		    # Install Calico common code, that includes BIRD templates.
