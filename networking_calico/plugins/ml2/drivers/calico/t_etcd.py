@@ -305,10 +305,16 @@ class CalicoTransportEtcd(object):
         # Get existing global ClusterInformation and FelixConfiguration.  We
         # will add to these, rather than trampling on anything that may already
         # be there.
-        cluster_info = datamodel_v3.get("ClusterInformation", "default")
+        try:
+            cluster_info = datamodel_v3.get("ClusterInformation", "default")
+        except etcd.EtcdKeyNotFound:
+            cluster_info = {}
         rewrite_cluster_info = False
         LOG.info("Read ClusterInformation: %s", cluster_info)
-        felix_config = datamodel_v3.get("FelixConfiguration", "default")
+        try:
+            felix_config = datamodel_v3.get("FelixConfiguration", "default")
+        except etcd.EtcdKeyNotFound:
+            felix_config = {}
         rewrite_felix_config = False
         LOG.info("Read FelixConfiguration: %s", felix_config)
 
