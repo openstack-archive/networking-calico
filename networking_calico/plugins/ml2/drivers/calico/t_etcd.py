@@ -33,6 +33,7 @@ from networking_calico.common import config as calico_config
 from networking_calico.compat import cfg
 from networking_calico.compat import log
 from networking_calico import datamodel_v1
+from networking_calico import datamodel_v3
 from networking_calico import etcdutils
 from networking_calico.plugins.ml2.drivers.calico.election import Elector
 
@@ -80,10 +81,8 @@ Profile = collections.namedtuple(
     'Profile',
     [
         'id',                   # Note: _without_ any OPENSTACK_SG_PREFIX.
-        'tags_modified_index',
-        'rules_modified_index',
-        'tags_data',
-        'rules_data',
+        'modified_index',
+        'spec',
     ]
 )
 Subnet = collections.namedtuple(
@@ -219,35 +218,14 @@ class CalicoTransportEtcd(object):
         return self.elector.master()
 
     @_handling_etcd_exceptions
-    def write_profile_to_etcd(self,
-                              profile,
-                              prev_rules_index=None,
-                              prev_tags_index=None):
-        """Write a single security profile into etcd."""
+    def write_profile_to_etcd(self, profile, prev_index=None):
+        """Convert and write a SecurityProfile to etcdv3."""
         LOG.debug("Writing profile %s", profile)
-        etcd_profile_id = with_openstack_sg_prefix(profile.id)
-
-        # python-etcd is stupid about the prevIndex keyword argument, so we
-        # need to explicitly filter out None-y values ourselves.
-        rules_kwargs = {}
-        if prev_rules_index is not None:
-            rules_kwargs['prevIndex'] = prev_rules_index
-
-        tags_kwargs = {}
-        if prev_tags_index is not None:
-            tags_kwargs['prevIndex'] = prev_tags_index
-
-        self.client.write(
-            datamodel_v1.key_for_profile_rules(etcd_profile_id),
-            json.dumps(profile_rules(profile)),
-            **rules_kwargs
-        )
-
-        self.client.write(
-            datamodel_v1.key_for_profile_tags(etcd_profile_id),
-            json.dumps(profile_tags(profile)),
-            **tags_kwargs
-        )
+        name = with_openstack_sg_prefix(profile.id)
+        datamodel_v3.put("Profile",
+                         name,
+                         profile_spec(profile),
+                         prev_index=prev_index)
 
     @_handling_etcd_exceptions
     def subnet_created(self, subnet, prev_index=None):
@@ -268,7 +246,7 @@ class CalicoTransportEtcd(object):
     def subnet_deleted(self, subnet_id):
         """Delete data from etcd for a subnet that is no longer wanted."""
         LOG.info("Deleting subnet %s", subnet_id)
-        # Delete the etcd key for this endpoint.
+        # Delete the etcd key for this subnet.
         key = datamodel_v1.key_for_subnet(subnet_id)
         try:
             self.client.delete(key)
@@ -324,57 +302,63 @@ class CalicoTransportEtcd(object):
         """
         LOG.info("Providing Felix configuration")
 
-        # First create the ClusterGUID, if it is not already set.
-        cluster_guid_key = datamodel_v1.key_for_config('ClusterGUID')
-        try:
-            cluster_guid = self.client.read(cluster_guid_key).value
-            LOG.info('ClusterGUID is %s', cluster_guid)
-        except etcd.EtcdKeyNotFound:
-            # Generate and write a globally unique cluster GUID.  Write it
-            # idempotently into the datastore. The prevExist=False creates the
-            # value (safely with CaS) if it doesn't exist.
-            LOG.info('ClusterGUID not set yet (%s)', cluster_guid_key)
-            guid = uuid.uuid4()
-            guid_string = guid.get_hex()
-            try:
-                self.client.write(cluster_guid_key,
-                                  guid_string,
-                                  prevExist=False)
-            except etcd.EtcdAlreadyExist:
-                LOG.info('ClusterGUID is now set - another orchestrator or' +
-                         ' Neutron server instance must have just written it')
-                pass
+        # Get existing global ClusterInformation and FelixConfiguration.  We
+        # will add to these, rather than trampling on anything that may already
+        # be there.
+        cluster_info = datamodel_v3.get("ClusterInformation", "default")
+        rewrite_cluster_info = False
+        LOG.info("Read ClusterInformation: %s", cluster_info)
+        felix_config = datamodel_v3.get("FelixConfiguration", "default")
+        rewrite_felix_config = False
+        LOG.info("Read FelixConfiguration: %s", felix_config)
 
-        # Read other config values that should exist.  We will write them only
-        # if they're not already (collectively) set as we want them.
-        prefix = None
-        reporting_enabled = None
-        ready = None
-        iface_pfx_key = datamodel_v1.key_for_config('InterfacePrefix')
-        reporting_key = datamodel_v1.key_for_config('EndpointReportingEnabled')
-        try:
-            prefix = self.client.read(iface_pfx_key).value
-            reporting_enabled = self.client.read(reporting_key).value
-            ready = self.client.read(datamodel_v1.READY_KEY).value
-        except etcd.EtcdKeyNotFound:
-            LOG.info('%s values are missing', datamodel_v1.CONFIG_DIR)
+        # Generate a cluster GUID if there isn't one already.
+        if not cluster_info.get(datamodel_v3.CLUSTER_GUID):
+            cluster_info[datamodel_v3.CLUSTER_GUID] = uuid.uuid4().get_hex()
+            rewrite_cluster_info = True
 
-        prefixes = prefix.split(',') if prefix else []
+        # Add "openstack" to the cluster type, unless there already.
+        cluster_type = cluster_info.get(datamodel_v3.CLUSTER_TYPE, "")
+        if cluster_type:
+            if "openstack" not in cluster_type:
+                cluster_info[datamodel_v3.CLUSTER_TYPE] = \
+                    cluster_type + ",openstack"
+                rewrite_cluster_info = True
+        else:
+            cluster_info[datamodel_v3.CLUSTER_TYPE] = "openstack"
+            rewrite_cluster_info = True
+
+        # TODO(nj): Do we need to ensure that the Calico version field is set?
+        # It may be that we don't need this for Calico/OpenStack operation.
+
+        # Set the datastore to ready, if it isn't already.
+        if not cluster_info.get(datamodel_v3.DATASTORE_READY, False):
+            cluster_info[datamodel_v3.DATASTORE_READY] = True
+            rewrite_cluster_info = True
+
+        # Enable endpoint reporting.
+        if not felix_config.get(datamodel_v3.ENDPOINT_REPORTING_ENABLED,
+                                False):
+            felix_config[datamodel_v3.ENDPOINT_REPORTING_ENABLED] = True
+            rewrite_felix_config = True
+
+        # Ensure that interface prefixes include 'tap'.
+        interface_prefix = felix_config.get(datamodel_v3.INTERFACE_PREFIX)
+        prefixes = interface_prefix.split(',') if interface_prefix else []
         if 'tap' not in prefixes:
             prefixes.append('tap')
-        prefix_new = ','.join(prefixes)
+            felix_config[datamodel_v3.INTERFACE_PREFIX] = ','.join(prefixes)
+            rewrite_felix_config = True
 
-        # Now write the values that need writing.
-        if prefix != prefix_new:
-            LOG.info('%s -> %s', iface_pfx_key, prefix_new)
-            self.client.write(iface_pfx_key, prefix_new)
-        if reporting_enabled != "true":
-            LOG.info('%s -> true', reporting_key)
-            self.client.write(reporting_key, 'true')
-        if ready != 'true':
-            # TODO(nj) Set this flag only once we're really ready!
-            LOG.info('%s -> true', datamodel_v1.READY_KEY)
-            self.client.write(datamodel_v1.READY_KEY, 'true')
+        # Rewrite FelixConfiguration, if we changed anything above.
+        if rewrite_felix_config:
+            LOG.info("New FelixConfiguration: %s", felix_config)
+            datamodel_v3.put("FelixConfiguration", "default", felix_config)
+
+        # Rewrite ClusterInformation, if we changed anything above.
+        if rewrite_cluster_info:
+            LOG.info("New ClusterInformation: %s", cluster_info)
+            datamodel_v3.put("ClusterInformation", "default", cluster_info)
 
     @_handling_etcd_exceptions
     def get_subnet_data(self, subnet):
@@ -541,154 +525,38 @@ class CalicoTransportEtcd(object):
         self._cleanup_workload_tree(endpoint.key)
 
     @_handling_etcd_exceptions
-    def get_profile_data(self, profile):
-        """get_profile_data
-
-        Get data for a profile out of etcd. This should be used on profiles
-        returned from functions like ``get_profiles``.
-
-        :param profile: A ``Profile`` class.
-        :return: A ``Profile`` class with tags and rules data present.
-        """
-        LOG.debug("Getting profile %s", profile.id)
-        etcd_profile_id = with_openstack_sg_prefix(profile.id)
-
-        tags_result = self.client.read(
-            datamodel_v1.key_for_profile_tags(etcd_profile_id),
-            timeout=ETCD_TIMEOUT
-        )
-        rules_result = self.client.read(
-            datamodel_v1.key_for_profile_rules(etcd_profile_id),
-            timeout=ETCD_TIMEOUT
-        )
-
-        return Profile(
-            id=profile.id,
-            tags_modified_index=tags_result.modifiedIndex,
-            rules_modified_index=rules_result.modifiedIndex,
-            tags_data=tags_result.value,
-            rules_data=rules_result.value,
-        )
-
-    @_handling_etcd_exceptions
     def get_profiles(self):
         """get_profiles
 
-        Gets information about every OpenStack profile in etcd. Returns a
-        generator of ``Profile`` objects.
+        Gets every OpenStack profile in etcdv3. Returns a generator of
+        ``Profile`` objects.
         """
-        LOG.info("Scanning etcd for all profiles")
+        LOG.info("Scanning etcdv3 for all profiles")
 
-        try:
-            result = self.client.read(
-                datamodel_v1.PROFILE_DIR, recursive=True, timeout=ETCD_TIMEOUT
-            )
-        except etcd.EtcdKeyNotFound:
-            # No key yet, which is totally fine: just exit.
-            LOG.info("No profiles key present")
-            return
-
-        nodes = result.children
-
-        tag_indices = {}
-        rules_indices = {}
-
-        for node in nodes:
-            # All groups have both tags and rules, and we need the
-            # modifiedIndex for both.  Note we're not interested in any profile
-            # IDs that don't begin with the OpenStack prefix.
-            tags_match = datamodel_v1.TAGS_KEY_RE.match(node.key)
-            rules_match = datamodel_v1.RULES_KEY_RE.match(node.key)
-            if tags_match:
-                profile_id = tags_match.group('profile_id')
-                if profile_id.startswith(OPENSTACK_SG_PREFIX):
-                    tag_indices[profile_id] = node.modifiedIndex
-                else:
-                    continue
-            elif rules_match:
-                profile_id = rules_match.group('profile_id')
-                if profile_id.startswith(OPENSTACK_SG_PREFIX):
-                    rules_indices[profile_id] = node.modifiedIndex
-                else:
-                    continue
-            else:
-                continue
-
-            # Check whether we have a complete set. If we do, remove them and
-            # yield.
-            if profile_id in tag_indices and profile_id in rules_indices:
-                tag_modified = tag_indices.pop(profile_id)
-                rules_modified = rules_indices.pop(profile_id)
-
-                LOG.debug("Found profile id %s", profile_id)
+        for result in datamodel_v3.get_all("Profile"):
+            name, spec, modified_index = result
+            if name.startswith(OPENSTACK_SG_PREFIX):
+                LOG.debug("Found profile %s", name)
                 yield Profile(
-                    id=without_openstack_sg_prefix(profile_id),
-                    tags_modified_index=tag_modified,
-                    rules_modified_index=rules_modified,
-                    tags_data=None,
-                    rules_data=None,
+                    id=without_openstack_sg_prefix(name),
+                    modified_index=modified_index,
+                    spec=spec,
                 )
-
-        # Quickly confirm that the tag and rule indices are empty (they should
-        # be).
-        if tag_indices or rules_indices:
-            LOG.warning(
-                "Imbalanced profile tags and rules! "
-                "Extra tags %s, extra rules %s", tag_indices, rules_indices
-            )
 
     @_handling_etcd_exceptions
     def atomic_delete_profile(self, profile):
         """atomic_delete_profile
 
-        Atomically delete a profile. This occurs in two stages: first the tag,
-        then the rules. Abort if the first stage fails, as we can assume that
-        someone else is trying to replace the profile.
-
-        Tolerates attempting to delete keys that are already deleted.
-
-        This will also attempt to clean up the directory, but isn't overly
-        bothered if that fails.
+        Atomically delete a profile.
         """
         LOG.info(
-            "Deleting profile %s, tags modified %s, rules modified %s",
+            "Deleting profile %s, modified %s",
             profile.id,
-            profile.tags_modified_index,
-            profile.rules_modified_index
+            profile.modified_index,
         )
-        etcd_profile_id = with_openstack_sg_prefix(profile.id)
+        name = with_openstack_sg_prefix(profile.id)
 
-        # Try to delete tags and rules. We don't care if we can't, but we
-        # should log in case it's symptomatic of a wider problem.
-        try:
-            self.client.delete(
-                datamodel_v1.key_for_profile_tags(etcd_profile_id),
-                prevIndex=profile.tags_modified_index,
-                timeout=ETCD_TIMEOUT
-            )
-        except etcd.EtcdKeyNotFound:
-            LOG.info(
-                "Profile %s tags already deleted, nothing to do.", profile.id
-            )
-
-        try:
-            self.client.delete(
-                datamodel_v1.key_for_profile_rules(etcd_profile_id),
-                prevIndex=profile.rules_modified_index,
-                timeout=ETCD_TIMEOUT
-            )
-        except etcd.EtcdKeyNotFound:
-            LOG.info(
-                "Profile %s rules already deleted, nothing to do.", profile.id
-            )
-
-        # Strip the rules/tags specific part of the key.
-        profile_key = datamodel_v1.key_for_profile(etcd_profile_id)
-
-        try:
-            self.client.delete(profile_key, dir=True, timeout=ETCD_TIMEOUT)
-        except etcd.EtcdException as e:
-            LOG.debug("Failed to delete %s (%r), giving up.", profile_key, e)
+        datamodel_v3.delete("Profile", name)
 
     def _cleanup_workload_tree(self, endpoint_key):
         """_cleanup_workload_tree
@@ -965,35 +833,32 @@ def _neutron_rule_to_etcd_rule(rule):
     ethertype = rule['ethertype']
     etcd_rule = {}
     # Map the ethertype field from Neutron to etcd format.
-    etcd_rule['ip_version'] = {'IPv4': 4,
-                               'IPv6': 6}[ethertype]
+    etcd_rule['ipVersion'] = {'IPv4': 4,
+                              'IPv6': 6}[ethertype]
     # Map the protocol field from Neutron to etcd format.
     if rule['protocol'] is None or rule['protocol'] == -1:
         pass
     elif rule['protocol'] == 'icmp':
-        etcd_rule['protocol'] = {'IPv4': 'icmp',
-                                 'IPv6': 'icmpv6'}[ethertype]
-    else:
+        etcd_rule['protocol'] = {'IPv4': 'ICMP',
+                                 'IPv6': 'ICMPv6'}[ethertype]
+    elif isinstance(rule['protocol'], int):
         etcd_rule['protocol'] = rule['protocol']
+    else:
+        etcd_rule['protocol'] = rule['protocol'].upper()
 
-    # OpenStack (sometimes) represents 'any IP address' by setting
-    # both 'remote_group_id' and 'remote_ip_prefix' to None.  We
-    # translate that to an explicit 0.0.0.0/0 (for IPv4) or ::/0
-    # (for IPv6).
-    net = rule['remote_ip_prefix']
-    if not (net or rule['remote_group_id']):
-        net = {'IPv4': '0.0.0.0/0',
-               'IPv6': '::/0'}[ethertype]
     port_spec = None
     if rule['protocol'] == 'icmp':
         # OpenStack stashes the ICMP match criteria in
         # port_range_min/max.
+        icmp_fields = {}
         icmp_type = rule['port_range_min']
         if icmp_type is not None and icmp_type != -1:
-            etcd_rule['icmp_type'] = icmp_type
+            icmp_fields['type'] = icmp_type
         icmp_code = rule['port_range_max']
         if icmp_code is not None and icmp_code != -1:
-            etcd_rule['icmp_code'] = icmp_code
+            icmp_fields['code'] = icmp_code
+        if icmp_fields:
+            etcd_rule['icmp'] = icmp_fields
     else:
         # src/dst_ports is a list in which each entry can be a
         # single number, or a string describing a port range.
@@ -1006,24 +871,23 @@ def _neutron_rule_to_etcd_rule(rule):
             port_spec = ['%s:%s' % (rule['port_range_min'],
                                     rule['port_range_max'])]
 
-    # Put it all together and add to either the inbound or the
-    # outbound list.
-    if rule['direction'] == 'ingress':
-        if rule['remote_group_id'] is not None:
-            etcd_rule['src_tag'] = rule['remote_group_id']
-        if net is not None:
-            etcd_rule['src_net'] = net
-        if port_spec is not None:
-            etcd_rule['dst_ports'] = port_spec
-        LOG.debug("=> Inbound Calico rule %s" % etcd_rule)
-    else:
-        if rule['remote_group_id'] is not None:
-            etcd_rule['dst_tag'] = rule['remote_group_id']
-        if net is not None:
-            etcd_rule['dst_net'] = net
-        if port_spec is not None:
-            etcd_rule['dst_ports'] = port_spec
-        LOG.debug("=> Outbound Calico rule %s" % etcd_rule)
+    entity_rule = {}
+    if rule['remote_group_id'] is not None:
+        entity_rule['selector'] = 'has(%s)' % rule['remote_group_id']
+    if rule['remote_ip_prefix'] is not None:
+        entity_rule['nets'] = [rule['remote_ip_prefix']]
+    if port_spec is not None:
+        entity_rule['ports'] = port_spec
+    LOG.debug("=> Entity rule %s" % entity_rule)
+
+    # Store in source or destination field of the overall rule.
+    if entity_rule:
+        if rule['direction'] == 'ingress':
+            etcd_rule['source'] = entity_rule
+        else:
+            etcd_rule['destination'] = entity_rule
+
+    LOG.debug("=> %s Calico rule %s" % (rule['direction'], etcd_rule))
 
     return etcd_rule
 
@@ -1109,19 +973,10 @@ def port_etcd_data(port):
     return data
 
 
-def profile_tags(profile):
-    """profile_tags
+def profile_spec(profile):
+    """profile_spec
 
-    Get the tags from a given security profile.
-    """
-    # TODO(nj): This is going to be a no-op now, so consider removing it.
-    return profile.id.split('_')
-
-
-def profile_rules(profile):
-    """profile_rules
-
-    Get a dictionary of profile rules, ready for writing into etcd as JSON.
+    Generate JSON ProfileSpec for the given SecurityProfile.
     """
     inbound_rules = [
         _neutron_rule_to_etcd_rule(rule) for rule in profile.inbound_rules
@@ -1129,5 +984,12 @@ def profile_rules(profile):
     outbound_rules = [
         _neutron_rule_to_etcd_rule(rule) for rule in profile.outbound_rules
     ]
+    labels_to_apply = {}
+    for tag in profile.id.split('_'):
+        labels_to_apply[tag] = ''
 
-    return {'inbound_rules': inbound_rules, 'outbound_rules': outbound_rules}
+    return {
+        'ingress': inbound_rules,
+        'egress': outbound_rules,
+        'labelsToApply': labels_to_apply,
+    }
