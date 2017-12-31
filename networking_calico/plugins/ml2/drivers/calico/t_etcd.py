@@ -706,19 +706,7 @@ class CalicoEtcdWatcher(object):
 
     def _on_status_del(self, response, hostname):
         """Called when Felix's status key expires.  Implies felix is dead."""
-        LOG.error("Felix on host %s failed to check in.  Marking the "
-                  "ports it was managing as in-error.", hostname)
-        for endpoint_id in self._endpoints_by_host[hostname]:
-            # Flag all the ports as being in error.  They're no longer
-            # receiving security updates.
-            self.calico_driver.on_port_status_changed(
-                hostname,
-                endpoint_id.endpoint,
-                None,
-            )
-        # Then discard our cache of endpoints.  If felix comes back up, it will
-        # repopulate.
-        self._endpoints_by_host.pop(hostname)
+        LOG.error("Felix on host %s failed to check in", hostname)
 
     def _on_ep_set(self, response, hostname, workload, endpoint):
         """Called when the status key for a particular endpoint is updated.
@@ -731,21 +719,14 @@ class CalicoEtcdWatcher(object):
             LOG.error("Failed to extract endpoint ID from: %s.  Ignoring "
                       "update!", response.key)
             return
-        self._report_status(self._endpoints_by_host,
-                            ep_id,
-                            response.value)
+        self._report_status(ep_id, response.value)
 
-    def _report_status(self, endpoints_by_host, endpoint_id, raw_json):
+    def _report_status(self, endpoint_id, raw_json):
         try:
             status = json.loads(raw_json)
         except (ValueError, TypeError):
             LOG.error("Bad JSON data for %s: %s", endpoint_id, raw_json)
             status = None  # Report as error
-            endpoints_by_host[endpoint_id.host].discard(endpoint_id)
-            if not endpoints_by_host[endpoint_id.host]:
-                del endpoints_by_host[endpoint_id.host]
-        else:
-            endpoints_by_host[endpoint_id.host].add(endpoint_id)
         LOG.debug("Port %s updated to status %s", endpoint_id, status)
         self.calico_driver.on_port_status_changed(
             endpoint_id.host,
@@ -760,10 +741,6 @@ class CalicoEtcdWatcher(object):
         the deletion to the driver.
         """
         LOG.debug("Port %s/%s/%s deleted", hostname, workload, endpoint)
-        endpoint_id = datamodel_v1.get_endpoint_id_from_key(response.key)
-        self._endpoints_by_host[hostname].discard(endpoint_id)
-        if not self._endpoints_by_host[hostname]:
-            del self._endpoints_by_host[hostname]
         self.calico_driver.on_port_status_changed(
             hostname,
             endpoint,
