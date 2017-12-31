@@ -673,7 +673,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
         # Pass this to the transport layer.
         self.transport.endpoint_deleted(port)
-        datamodel_v3.delete("WorkloadEndpoint", port['id'])
+        datamodel_v3.delete("WorkloadEndpoint", endpoint_name(port))
 
     @retry_on_cluster_id_change
     @requires_state
@@ -770,7 +770,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             # for now, and performance test to see if it's a problem later.
             self.transport.endpoint_created(port)
             datamodel_v3.put("WorkloadEndpoint",
-                             port['id'],
+                             endpoint_name(port),
                              endpoint_spec(port))
 
     def _update_endpoint(self, context, port, original):
@@ -816,7 +816,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         """
         LOG.info("Port becoming unbound: destroy.")
         self.transport.endpoint_deleted(port)
-        datamodel_v3.delete("WorkloadEndpoint", port['id'])
+        datamodel_v3.delete("WorkloadEndpoint", endpoint_name(port))
 
     def _port_bound_update(self, context, port):
         """_port_bound_update
@@ -844,7 +844,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
         # Now write the new endpoint data for the port.
         self.transport.endpoint_created(port)
-        datamodel_v3.put("WorkloadEndpoint", port['id'], endpoint_spec(port))
+        datamodel_v3.put("WorkloadEndpoint",
+                         endpoint_name(port),
+                         endpoint_spec(port))
 
     def _icehouse_migration_step(self, context, port, original):
         """_icehouse_migration_step
@@ -896,13 +898,13 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             # Now write the new endpoint data for the port.
             self.transport.endpoint_created(port)
             datamodel_v3.put("WorkloadEndpoint",
-                             port['id'],
+                             endpoint_name(port),
                              endpoint_spec(port))
         else:
             # Port unbound, attempt to delete.
             LOG.info("Port disabled, attempting delete if needed.")
             self.transport.endpoint_deleted(port)
-            datamodel_v3.delete("WorkloadEndpoint", port['id'])
+            datamodel_v3.delete("WorkloadEndpoint", endpoint_name(port))
 
     def add_port_gateways(self, port, context):
         """add_port_gateways
@@ -1246,7 +1248,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 port = self.add_extra_port_information(context, port)
                 if v3_datamodel:
                     datamodel_v3.put("WorkloadEndpoint",
-                                     port['id'],
+                                     endpoint_name(port),
                                      endpoint_spec(port))
                 else:
                     self.transport.endpoint_created(port)
@@ -1324,7 +1326,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 try:
                     if v3_datamodel:
                         datamodel_v3.put("WorkloadEndpoint",
-                                         port['id'],
+                                         endpoint_name(port),
                                          neutron_data,
                                          prev_index=endpoint.modified_index)
                     else:
@@ -1516,6 +1518,16 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.add_port_gateways(port, context)
         self.add_port_interface_name(port)
         return port
+
+
+def endpoint_name(port):
+    def escape_dashes(s):
+        return s.replace("-", "--")
+    return "%s-openstack-%s-%s" % (
+        escape_dashes(port['binding:host_id']),
+        escape_dashes(port['id']),
+        escape_dashes(port['id']),
+    )
 
 
 # Represent a Neutron port as a Calico v3 WorkloadEndpoint spec.
