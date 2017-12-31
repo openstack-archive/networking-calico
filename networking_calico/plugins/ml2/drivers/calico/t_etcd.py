@@ -592,9 +592,10 @@ class CalicoTransportEtcd(object):
 
 
 class CalicoEtcdWatcher(object):
-    """A class that watches our status-reporting subtree.  Status events use the
-    Calico v1 data model, under datamodel_v1.FELIX_STATUS_DIR, but are written
-    and read over etcdv3.
+    """A class that watches our status-reporting subtree.
+
+    Status events use the Calico v1 data model, under
+    datamodel_v1.FELIX_STATUS_DIR, but are written and read over etcdv3.
 
     This class parses events within that subtree and passes corresponding
     updates to the mechanism driver.
@@ -643,37 +644,47 @@ class CalicoEtcdWatcher(object):
             # - response.value
             response = Response(
                 action=event.get('type', 'SET').lower(),
-                key=event[kv][key],
-                value=event[kv].get('value', ''),
+                key=event['kv']['key'],
+                value=event['kv'].get('value', ''),
             )
             LOG.info("converted response: %s", response)
             self.dispatcher.handle_event(response)
 
-"""
-Example status events:
+    """
+    Example status events:
 
- status event: {u'kv': {
-     u'mod_revision': u'4',
-     u'value': '{"time":"2017-12-31T14:09:29Z","uptime":392.5231995,"first_update":true}',
-     u'create_revision': u'4',
-     u'version': u'1',
-     u'key': '/calico/felix/v1/host/ubuntu-xenial-rax-dfw-0001640133/status'
- }}
+    status event: {u'kv': {
+        u'mod_revision': u'4',
+        u'value': '{
+            "time":"2017-12-31T14:09:29Z",
+            "uptime":392.5231995,
+            "first_update":true
+        }',
+        u'create_revision': u'4',
+        u'version': u'1',
+        u'key': '/calico/felix/v1/host/ubuntu-xenial-rax-dfw-0001640133/status'
+    }}
 
- status event: {u'type': u'DELETE',
-                u'kv': {
-     u'mod_revision': u'88',
-     u'key': '/calico/felix/v1/host/ubuntu-xenial-rax-dfw-0001640133/workload/openstack/openstack%2f84a5e464-c2be-4bfd-926b-96030421999d/endpoint/84a5e464-c2be-4bfd-926b-96030421999d'
- }}
+    status event: {u'type': u'DELETE',
+                   u'kv': {
+        u'mod_revision': u'88',
+        u'key': '/calico/felix/v1/host/ubuntu-xenial-rax-dfw-0001640133/' +
+                'workload/openstack/' +
+                'openstack%2f84a5e464-c2be-4bfd-926b-96030421999d/endpoint/' +
+                '84a5e464-c2be-4bfd-926b-96030421999d'
+    }}
 
- status event: {u'kv': {
-     u'mod_revision': u'113',
-     u'value': '{"status":"down"}',
-     u'create_revision': u'113',
-     u'version': u'1',
-     u'key': '/calico/felix/v1/host/ubuntu-xenial-rax-dfw-0001640133/workload/openstack/openstack%2f8ae2181b-8aab-4b49-8242-346f6a0b21e5/endpoint/8ae2181b-8aab-4b49-8242-346f6a0b21e5'
- }}
-"""
+    status event: {u'kv': {
+        u'mod_revision': u'113',
+        u'value': '{"status":"down"}',
+        u'create_revision': u'113',
+        u'version': u'1',
+        u'key': '/calico/felix/v1/host/ubuntu-xenial-rax-dfw-0001640133/' +
+                'workload/openstack/' +
+                'openstack%2f8ae2181b-8aab-4b49-8242-346f6a0b21e5/endpoint/' +
+                '8ae2181b-8aab-4b49-8242-346f6a0b21e5'
+    }}
+    """
 
     def stop(self):
         LOG.info("Stop watching status tree")
