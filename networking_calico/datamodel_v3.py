@@ -111,6 +111,12 @@ def delete(resource_kind, name):
     return deleted
 
 
+def watch_subtree(prefix):
+    LOG.info("Watch subtree %s", prefix)
+    client = _get_client()
+    return *(client.watch_prefix(prefix))
+
+
 # Internals.
 _client = None
 

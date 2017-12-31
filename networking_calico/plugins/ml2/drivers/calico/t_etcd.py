@@ -88,6 +88,9 @@ Profile = collections.namedtuple(
 Subnet = collections.namedtuple(
     'Subnet', ['id', 'modified_index', 'data']
 )
+Response = collections.namedtuple(
+    'Response', ['action', 'key', 'value']
+)
 
 
 # The ID of every profile that this driver writes into etcd will be prefixed
@@ -588,137 +591,93 @@ class CalicoTransportEtcd(object):
         self.elector.stop()
 
 
-class CalicoEtcdWatcher(etcdutils.EtcdWatcher):
-    """An EtcdWatcher that watches our status-reporting subtree.
+class CalicoEtcdWatcher(object):
+    """A class that watches our status-reporting subtree.  Status events use the
+    Calico v1 data model, under datamodel_v1.FELIX_STATUS_DIR, but are written
+    and read over etcdv3.
 
-    Responsible for parsing the events and passing the updates to the
-    mechanism driver.
+    This class parses events within that subtree and passes corresponding
+    updates to the mechanism driver.
 
-    We deliberately do not share an etcd client with the transport.
-    The reason is that, if we share a client then managing the lifecycle
-    of the client becomes an awkward shared responsibility (complicated
-    by the EtcdClusterIdChanged exception, which is only thrown once).
+    Entrypoints:
+    - CalicoEtcdWatcher(calico_driver) (constructor)
+    - watcher.loop()
+    - watcher.stop()
+
+    Callbacks (from the thread of watcher.loop()):
+    - calico_driver.on_port_status_changed
+    - calico_driver.on_felix_alive
     """
 
     def __init__(self, calico_driver):
-        calico_cfg = cfg.CONF.calico
-        host = calico_cfg.etcd_host
-        port = calico_cfg.etcd_port
-        LOG.info("CalicoEtcdWatcher created for %s:%s", host, port)
-        tls_config_params = [
-            calico_cfg.etcd_key_file,
-            calico_cfg.etcd_cert_file,
-            calico_cfg.etcd_ca_cert_file,
-        ]
-        if any(tls_config_params):
-            LOG.info("TLS to etcd is enabled with key file %s; "
-                     "cert file %s; CA cert file %s", *tls_config_params)
-            protocol = "https"
-        else:
-            LOG.info("TLS disabled, using HTTP to connect to etcd.")
-            protocol = "http"
-        super(CalicoEtcdWatcher, self).__init__(
-            "%s:%s" % (host, port),
-            datamodel_v1.FELIX_STATUS_DIR,
-            etcd_scheme=protocol,
-            etcd_key=calico_cfg.etcd_key_file,
-            etcd_cert=calico_cfg.etcd_cert_file,
-            etcd_ca=calico_cfg.etcd_ca_cert_file
-        )
+        LOG.info("CalicoEtcdWatcher created")
         self.calico_driver = calico_driver
-
-        # Track the set of endpoints that are on each host so we can generate
-        # deletes for parent dirs being deleted.
-        self._endpoints_by_host = collections.defaultdict(set)
+        self.cancel = None
+        self.dispatcher = etcdutils.PathDispatcher()
 
         # Register for felix uptime updates.
-        self.register_path(datamodel_v1.FELIX_STATUS_DIR +
-                           "/<hostname>/status",
-                           on_set=self._on_status_set,
-                           on_del=self._on_status_del)
+        self.dispatcher.register(datamodel_v1.FELIX_STATUS_DIR +
+                                 "/<hostname>/status",
+                                 on_set=self._on_status_set,
+                                 on_del=self._on_status_del)
         # Register for per-port status updates.
-        self.register_path(datamodel_v1.FELIX_STATUS_DIR +
-                           "/<hostname>/workload/openstack/"
-                           "<workload>/endpoint/<endpoint>",
-                           on_set=self._on_ep_set,
-                           on_del=self._on_ep_delete)
-        self.register_path(datamodel_v1.FELIX_STATUS_DIR +
-                           "/<hostname>/workload/openstack/"
-                           "<workload>/endpoint",
-                           on_del=self._on_per_host_dir_delete)
-        self.register_path(datamodel_v1.FELIX_STATUS_DIR +
-                           "/<hostname>/workload/openstack/"
-                           "<workload>",
-                           on_del=self._on_per_host_dir_delete)
-        self.register_path(datamodel_v1.FELIX_STATUS_DIR +
-                           "/<hostname>/workload/openstack",
-                           on_del=self._on_per_host_dir_delete)
-        self.register_path(datamodel_v1.FELIX_STATUS_DIR +
-                           "/<hostname>/workload",
-                           on_del=self._on_per_host_dir_delete)
-        self.register_path(datamodel_v1.FELIX_STATUS_DIR + "/<hostname>",
-                           on_del=self._on_per_host_dir_delete)
-        self.register_path(datamodel_v1.FELIX_STATUS_DIR,
-                           on_del=self._force_resync)
+        self.dispatcher.register(datamodel_v1.FELIX_STATUS_DIR +
+                                 "/<hostname>/workload/openstack/"
+                                 "<workload>/endpoint/<endpoint>",
+                                 on_set=self._on_ep_set,
+                                 on_del=self._on_ep_delete)
 
-    def _on_snapshot_loaded(self, etcd_snapshot_response):
-        """Called whenever a snapshot is loaded from etcd.
+    def loop(self):
+        LOG.info("Start watching status tree")
+        event_stream, self.cancel = \
+            datamodel_v3.watch_subtree(datamodel_v1.FELIX_STATUS_DIR)
+        for event in event_stream:
+            LOG.info("status event: %s", event)
+            # Convert v3 event to form that the dispatcher expects; namely an
+            # object response, with:
+            # - response.key giving the etcd key
+            # - response.action being "set" or "delete"
+            # - whole response being passed on to the handler method.
+            # Handler methods here expect
+            # - response.key
+            # - response.value
+            response = Response(
+                action=event.get('type', 'SET').lower(),
+                key=event[kv][key],
+                value=event[kv].get('value', ''),
+            )
+            LOG.info("converted response: %s", response)
+            self.dispatcher.handle_event(response)
 
-        Updates the driver with the current state.
-        """
-        LOG.info("Started processing status-reporting snapshot from etcd")
-        endpoints_by_host = collections.defaultdict(set)
-        hosts_with_live_felix = set()
+"""
+Example status events:
 
-        # First pass: find all the Felixes that are alive.
-        for etcd_node in etcd_snapshot_response.leaves:
-            key = etcd_node.key
-            felix_hostname = datamodel_v1.hostname_from_status_key(key)
-            if felix_hostname:
-                # Defer to the code for handling an event.
-                hosts_with_live_felix.add(felix_hostname)
-                self._on_status_set(etcd_node, felix_hostname)
-                continue
+ status event: {u'kv': {
+     u'mod_revision': u'4',
+     u'value': '{"time":"2017-12-31T14:09:29Z","uptime":392.5231995,"first_update":true}',
+     u'create_revision': u'4',
+     u'version': u'1',
+     u'key': '/calico/felix/v1/host/ubuntu-xenial-rax-dfw-0001640133/status'
+ }}
 
-        # Second pass: find all the endpoints associated with a live Felix.
-        for etcd_node in etcd_snapshot_response.leaves:
-            key = etcd_node.key
-            endpoint_id = datamodel_v1.get_endpoint_id_from_key(key)
-            if endpoint_id:
-                if endpoint_id.host in hosts_with_live_felix:
-                    LOG.debug("Endpoint %s is on a host with a live Felix.",
-                              endpoint_id)
-                    self._report_status(
-                        endpoints_by_host,
-                        endpoint_id,
-                        etcd_node.value
-                    )
-                else:
-                    LOG.debug("Endpoint %s is not on a host with live Felix;"
-                              "marking it down.",
-                              endpoint_id)
-                    self.calico_driver.on_port_status_changed(
-                        endpoint_id.host,
-                        endpoint_id.endpoint,
-                        None,
-                    )
-                continue
+ status event: {u'type': u'DELETE',
+                u'kv': {
+     u'mod_revision': u'88',
+     u'key': '/calico/felix/v1/host/ubuntu-xenial-rax-dfw-0001640133/workload/openstack/openstack%2f84a5e464-c2be-4bfd-926b-96030421999d/endpoint/84a5e464-c2be-4bfd-926b-96030421999d'
+ }}
 
-        # Find any removed endpoints.
-        for host, endpoints in self._endpoints_by_host.items():
-            current_endpoints = endpoints_by_host.get(host, set())
-            removed_endpoints = endpoints - current_endpoints
-            for endpoint_id in removed_endpoints:
-                LOG.debug("Endpoint %s removed by resync.")
-                self.calico_driver.on_port_status_changed(
-                    host,
-                    endpoint_id.endpoint,
-                    None,
-                )
+ status event: {u'kv': {
+     u'mod_revision': u'113',
+     u'value': '{"status":"down"}',
+     u'create_revision': u'113',
+     u'version': u'1',
+     u'key': '/calico/felix/v1/host/ubuntu-xenial-rax-dfw-0001640133/workload/openstack/openstack%2f8ae2181b-8aab-4b49-8242-346f6a0b21e5/endpoint/8ae2181b-8aab-4b49-8242-346f6a0b21e5'
+ }}
+"""
 
-        # Swap in the newly-loaded state.
-        self._endpoints_by_host = endpoints_by_host
-        LOG.info("Finished processing status-reporting snapshot from etcd")
+    def stop(self):
+        LOG.info("Stop watching status tree")
+        self.cancel()
 
     def _on_status_set(self, response, hostname):
         """Called when a felix uptime report is inserted/updated."""
@@ -799,35 +758,6 @@ class CalicoEtcdWatcher(etcdutils.EtcdWatcher):
             endpoint,
             None,
         )
-
-    def _on_per_host_dir_delete(self, response, hostname, workload=None):
-        """_on_per_host_dir_delete
-
-        Called when one of the directories that may contain endpoint
-        statuses is deleted.  Cleans up either the specific workload
-        or the whole host.
-        """
-        LOG.debug("One of the per-host directories for host %s, workload "
-                  "%s deleted.", hostname, workload)
-        endpoints_on_host = self._endpoints_by_host[hostname]
-        for endpoint_id in [ep_id for ep_id in endpoints_on_host if
-                            workload is None or workload == ep_id.workload]:
-            LOG.info("Directory containing status report for %s deleted;"
-                     "updating port status",
-                     endpoint_id)
-            endpoints_on_host.discard(endpoint_id)
-            self.calico_driver.on_port_status_changed(
-                hostname,
-                endpoint_id.endpoint,
-                None
-            )
-        if not endpoints_on_host:
-            del self._endpoints_by_host[hostname]
-
-    def _force_resync(self, response, **kwargs):
-        LOG.warning("Forcing a resync due to %s to key %s",
-                    response.action, response.key)
-        raise etcdutils.ResyncRequired()
 
 
 def _neutron_rule_to_etcd_rule(rule):
