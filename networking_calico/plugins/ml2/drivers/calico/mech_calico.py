@@ -1159,10 +1159,10 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 name, spec, modified_index = result
                 LOG.debug("Found endpoint %s", name)
                 endpoints.append(t_etcd.Endpoint(
-                    id=spec.endpoint,
+                    id=spec['endpoint'],
                     key=name,
                     modified_index=modified_index,
-                    host=spec.node,
+                    host=spec['node'],
                     data=spec,
                 ))
                 endpoint_ids.add(spec.endpoint)
