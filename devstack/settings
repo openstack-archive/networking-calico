@@ -52,7 +52,6 @@ else
     # generates and maintains correct full mesh BIRD config, in a
     # multi-node Calico/DevStack cluster.
     enable_service calico-bird
-    enable_service felix-logger
 fi
 
 # When Neutron is enabled, Devstack does agent-related installations,
