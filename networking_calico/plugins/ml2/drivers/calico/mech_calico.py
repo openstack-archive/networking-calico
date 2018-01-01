@@ -1165,7 +1165,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                     host=spec['node'],
                     data=spec,
                 ))
-                endpoint_ids.add(spec.endpoint)
+                endpoint_ids.add(spec['endpoint'])
         else:
             endpoints = list(self.transport.get_endpoints())
             endpoint_ids = set(ep.id for ep in endpoints)
