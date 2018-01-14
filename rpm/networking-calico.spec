@@ -3,7 +3,7 @@
 Name:           networking-calico
 Summary:        Project Calico networking for OpenStack/Neutron
 Epoch:          1
-Version:        1.4.3
+Version:        1.4.3.20180107
 Release:        1%{?dist}
 License:        Apache-2
 URL:            http://docs.openstack.org/developer/networking-calico/
@@ -161,6 +161,9 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Sun Jan 07 2018 Neil Jerram <neil@tigera.io> 1:1.4.3.20180107-1
+  - Testing snapshot
+
 * Fri Oct 06 2017 Neil Jerram <neil@tigera.io> 1:1.4.3-1
   - networking-calico version 1.4.3 release
     - Change _log.warn (now somewhat deprecated) to _log.warning
