@@ -264,7 +264,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                             self._my_pid, current_pid)
             else:
                 LOG.info("Doing Calico mechanism driver initialisation in"
-                         "process %s", current_pid)
+                         " process %s", current_pid)
 
             # (Re)init the DB.
             self.db = None
