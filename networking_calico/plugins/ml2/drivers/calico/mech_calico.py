@@ -320,21 +320,20 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             # Only handle updates if we are the master node.
             if self.transport.is_master:
                 if self._etcd_watcher is None:
-                    LOG.info("Became the master, starting CalicoEtcdWatcher")
-                    self._etcd_watcher = t_etcd.CalicoEtcdWatcher(self)
+                    LOG.info("Became the master, starting StatusWatcher")
+                    self._etcd_watcher = t_etcd.StatusWatcher(self)
                     self._etcd_watcher_thread = eventlet.spawn(
                         self._etcd_watcher.loop
                     )
                     LOG.info("Started %s as %s",
                              self._etcd_watcher, self._etcd_watcher_thread)
                 elif not self._etcd_watcher_thread:
-                    LOG.error("CalicoEtcdWatcher %s died", self._etcd_watcher)
+                    LOG.error("StatusWatcher %s died", self._etcd_watcher)
                     self._etcd_watcher.stop()
                     self._etcd_watcher = None
             else:
                 if self._etcd_watcher is not None:
-                    LOG.warning("No longer the master, stopping "
-                                "CalicoEtcdWatcher")
+                    LOG.warning("No longer master, stopping StatusWatcher")
                     self._etcd_watcher.stop()
                     self._etcd_watcher = None
                 # Short sleep interval before we check if we've become

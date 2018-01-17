@@ -23,10 +23,12 @@ import json
 import netaddr
 import re
 import socket
+import time
 import uuid
 import weakref
 
 import etcd
+import eventlet
 from eventlet.semaphore import Semaphore
 
 from networking_calico.common import config as calico_config
@@ -66,6 +68,7 @@ LOG = log.getLogger(__name__)
 # be refreshed.
 MASTER_REFRESH_INTERVAL = 10
 MASTER_TIMEOUT = 60
+WATCH_TIMEOUT_SECS = 10
 
 # Objects for lightly wrapping etcd return values for use in the mechanism
 # driver.
@@ -591,7 +594,7 @@ class CalicoTransportEtcd(object):
         self.elector.stop()
 
 
-class CalicoEtcdWatcher(object):
+class StatusWatcher(object):
     """A class that watches our status-reporting subtree.
 
     Status events use the Calico v1 data model, under
@@ -601,7 +604,7 @@ class CalicoEtcdWatcher(object):
     updates to the mechanism driver.
 
     Entrypoints:
-    - CalicoEtcdWatcher(calico_driver) (constructor)
+    - StatusWatcher(calico_driver) (constructor)
     - watcher.loop()
     - watcher.stop()
 
@@ -611,10 +614,14 @@ class CalicoEtcdWatcher(object):
     """
 
     def __init__(self, calico_driver):
-        LOG.info("CalicoEtcdWatcher created")
+        LOG.info("StatusWatcher created")
         self.calico_driver = calico_driver
         self.cancel = None
         self.dispatcher = etcdutils.PathDispatcher()
+
+        # Track the set of endpoints that are on each host so we can generate
+        # endpoint notifications if a Felix goes down.
+        self._endpoints_by_host = collections.defaultdict(set)
 
         # Register for felix uptime updates.
         self.dispatcher.register(datamodel_v1.FELIX_STATUS_DIR +
@@ -627,28 +634,116 @@ class CalicoEtcdWatcher(object):
                                  "<workload>/endpoint/<endpoint>",
                                  on_set=self._on_ep_set,
                                  on_del=self._on_ep_delete)
+        self._stopped = False
 
     def loop(self):
         LOG.info("Start watching status tree")
-        event_stream, self.cancel = \
-            datamodel_v3.watch_subtree(datamodel_v1.FELIX_STATUS_DIR)
-        for event in event_stream:
-            LOG.info("status event: %s", event)
-            # Convert v3 event to form that the dispatcher expects; namely an
-            # object response, with:
-            # - response.key giving the etcd key
-            # - response.action being "set" or "delete"
-            # - whole response being passed on to the handler method.
-            # Handler methods here expect
-            # - response.key
-            # - response.value
-            response = Response(
-                action=event.get('type', 'SET').lower(),
-                key=event['kv']['key'],
-                value=event['kv'].get('value', ''),
-            )
-            LOG.info("converted response: %s", response)
-            self.dispatcher.handle_event(response)
+
+        while not self._stopped:
+            # Get the current etcdv3 revision, so we know when to start
+            # watching from.
+            last_revision = int(datamodel_v3.get_current_revision())
+            LOG.info("Current etcdv3 revision is %d", last_revision)
+
+            # Report any existing values.
+            for result in datamodel_v3.get_prefix(
+                    datamodel_v1.FELIX_STATUS_DIR):
+                key, value = result
+                # Convert to what the dispatcher expects - see below.
+                response = Response(
+                    action='set',
+                    key=key,
+                    value=value,
+                )
+                LOG.info("status event: %s", response)
+                self.dispatcher.handle_event(response)
+
+            # Now watch for any changes, starting after the revision above.
+            while not self._stopped:
+                # Start a watch from just after the last known revision.
+                try:
+                    event_stream, cancel = \
+                        datamodel_v3.watch_subtree(
+                            datamodel_v1.FELIX_STATUS_DIR,
+                            start_revision=str(last_revision + 1))
+                except Exception as e:
+                    # Log and handle by breaking out to the wider loop, which
+                    # means we'll get the tree again and then try watching
+                    # again.  E.g. it could be that the DB has just been
+                    # compacted and so the revision is no longer available that
+                    # we asked to start watching from.
+                    LOG.exception("Exception watching status tree")
+                    break
+
+                # Record time of last activity on the successfully created
+                # watch.  (This is updated below as we see watch events.)
+                last_event_time = time.gmtime()
+
+                def _cancel_watch_if_inactive():
+                    # Loop until we should cancel the watch, either because of
+                    # inactivity or because of stop() having been called.
+                    while not self._stopped:
+                        time_to_next_timeout = (last_event_time +
+                                                WATCH_TIMEOUT_SECS -
+                                                time.gmtime())
+                        LOG.debug("Time to next timeout is %ds",
+                                  time_to_next_timeout)
+                        if time_to_next_timeout < 1:
+                            break
+                        else:
+                            # Sleep until when we might next have to cancel
+                            # (but won't if a watch event has occurred in the
+                            # meantime).
+                            eventlet.sleep(time_to_next_timeout)
+
+                    # Cancel the watch
+                    cancel()
+                    return
+
+                # Spawn a greenlet to cancel the watch if it's inactive, or if
+                # stop() is called.  Cancelling the watch adds None to the
+                # event stream, so the following for loop will see that.
+                eventlet.spawn(_cancel_watch_if_inactive)
+
+                for event in event_stream:
+                    LOG.debug("status event: %s", event)
+                    last_event_time = time.gmtime()
+
+                    # If the StatusWatcher has been stopped, return from the
+                    # whole loop.
+                    if self._stopped:
+                        LOG.info("StatusWatcher has been stopped")
+                        return
+
+                    # Otherwise a None event means that the watch has been
+                    # cancelled owing to inactivity.  In that case we break out
+                    # from this loop, and the watch will be restarted.
+                    if event is None:
+                        LOG.debug("Watch cancelled owing to inactivity")
+                        break
+
+                    # Convert v3 event to form that the dispatcher expects;
+                    # namely an object response, with:
+                    # - response.key giving the etcd key
+                    # - response.action being "set" or "delete"
+                    # - whole response being passed on to the handler method.
+                    # Handler methods here expect
+                    # - response.key
+                    # - response.value
+                    response = Response(
+                        action=event.get('type', 'SET').lower(),
+                        key=event['kv']['key'],
+                        value=event['kv'].get('value', ''),
+                    )
+                    LOG.info("status event: %s", response)
+                    self.dispatcher.handle_event(response)
+
+                    # Update last known revision.
+                    mod_revision = int(event['kv'].get('mod_revision', '0'))
+                    if mod_revision > last_revision:
+                        last_revision = mod_revision
+                        LOG.info("Last known revision is now %d",
+                                 last_revision)
 
     """
     Example status events:
@@ -688,7 +783,7 @@ class CalicoEtcdWatcher(object):
 
     def stop(self):
         LOG.info("Stop watching status tree")
-        self.cancel()
+        self._stopped = True
 
     def _on_status_set(self, response, hostname):
         """Called when a felix uptime report is inserted/updated."""
@@ -706,7 +801,19 @@ class CalicoEtcdWatcher(object):
 
     def _on_status_del(self, response, hostname):
         """Called when Felix's status key expires.  Implies felix is dead."""
-        LOG.error("Felix on host %s failed to check in", hostname)
+        LOG.error("Felix on host %s failed to check in.  Marking the "
+                  "ports it was managing as in-error.", hostname)
+        for endpoint_id in self._endpoints_by_host[hostname]:
+            # Flag all the ports as being in error.  They're no longer
+            # receiving security updates.
+            self.calico_driver.on_port_status_changed(
+                hostname,
+                endpoint_id.endpoint,
+                None,
+            )
+        # Then discard our cache of endpoints.  If felix comes back up, it will
+        # repopulate.
+        self._endpoints_by_host.pop(hostname)
 
     def _on_ep_set(self, response, hostname, workload, endpoint):
         """Called when the status key for a particular endpoint is updated.
@@ -727,6 +834,11 @@ class CalicoEtcdWatcher(object):
         except (ValueError, TypeError):
             LOG.error("Bad JSON data for %s: %s", endpoint_id, raw_json)
             status = None  # Report as error
+            self._endpoints_by_host[endpoint_id.host].discard(endpoint_id)
+            if not self._endpoints_by_host[endpoint_id.host]:
+                del self._endpoints_by_host[endpoint_id.host]
+        else:
+            self._endpoints_by_host[endpoint_id.host].add(endpoint_id)
         LOG.debug("Port %s updated to status %s", endpoint_id, status)
         self.calico_driver.on_port_status_changed(
             endpoint_id.host,
@@ -741,6 +853,10 @@ class CalicoEtcdWatcher(object):
         the deletion to the driver.
         """
         LOG.debug("Port %s/%s/%s deleted", hostname, workload, endpoint)
+        endpoint_id = datamodel_v1.get_endpoint_id_from_key(response.key)
+        self._endpoints_by_host[hostname].discard(endpoint_id)
+        if not self._endpoints_by_host[hostname]:
+            del self._endpoints_by_host[hostname]
         self.calico_driver.on_port_status_changed(
             hostname,
             endpoint,

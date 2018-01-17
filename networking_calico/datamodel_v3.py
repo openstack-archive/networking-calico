@@ -19,8 +19,8 @@ from etcd3gw.utils import _encode
 import json
 
 from networking_calico.compat import cfg
-from networking_calico.compat import log
-
+#from networking_calico.compat import log
+import logging
 
 # Particular JSON key strings.
 CLUSTER_GUID = 'clusterGUID'
@@ -30,8 +30,8 @@ ENDPOINT_REPORTING_ENABLED = 'endpointReportingEnabled'
 INTERFACE_PREFIX = 'interfacePrefix'
 
 
-LOG = log.getLogger(__name__)
-
+LOG = logging.getLogger(__name__)
+LOG.setLevel(logging.DEBUG)
 
 def put(resource_kind, name, spec, prev_index=None):
     client = _get_client()
@@ -74,6 +74,7 @@ def put(resource_kind, name, spec, prev_index=None):
 
 
 def get(resource_kind, name):
+    LOG.info("etcdv3 get")
     client = _get_client()
     key = _build_key(resource_kind, name)
     results = client.get(key, metadata=False)
@@ -106,16 +107,36 @@ def get_all(resource_kind):
 def delete(resource_kind, name):
     client = _get_client()
     key = _build_key(resource_kind, name)
+    LOG.debug("etcdv3 delete key=%s", key)
     deleted = client.delete(key)
-    LOG.debug("etcdv3 delete key=%s deleted=%s", key, deleted)
+    LOG.debug("etcdv3 deleted=%s", deleted)
     return deleted
 
 
-def watch_subtree(prefix):
+def get_prefix(prefix):
+    client = _get_client()
+    results = client.get_prefix(prefix)
+    LOG.debug("etcdv3 get_prefix %s results=%s", prefix, len(results))
+    tuples = []
+    for result in results:
+        value, item = result
+        tuple = (item['key'], value)
+        tuples.append(tuple)
+    return tuples
+
+
+def watch_subtree(prefix, **kwargs):
     LOG.info("Watch subtree %s", prefix)
     client = _get_client()
-    event_stream, cancel = client.watch_prefix(prefix)
+    event_stream, cancel = client.watch_prefix(prefix, **kwargs)
     return event_stream, cancel
+
+
+def get_current_revision():
+    client = _get_client()
+    status = client.status()
+    LOG.debug("etcdv3 status %s", status)
+    return status['header']['revision']
 
 
 # Internals.
