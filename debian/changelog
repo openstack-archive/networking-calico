@@ -1,14 +1,14 @@
-networking-calico (1:1.4.3.20180107~xenial) xenial; urgency=medium
+networking-calico (1:1.4.3.20180129~xenial) xenial; urgency=medium
 
   * Testing snapshot
 
- -- Neil Jerram <neil@tigera.io>  Sun, 07 Jan 2018 00:03:23 +0000
+ -- Neil Jerram <neil@tigera.io>  Mon, 29 Jan 2018 13:17:48 +0000
 
-networking-calico (1:1.4.3.20180107~trusty) trusty; urgency=medium
+networking-calico (1:1.4.3.20180129~trusty) trusty; urgency=medium
 
   * Testing snapshot
 
- -- Neil Jerram <neil@tigera.io>  Sun, 07 Jan 2018 00:03:23 +0000
+ -- Neil Jerram <neil@tigera.io>  Mon, 29 Jan 2018 13:17:48 +0000
 
 networking-calico (1:1.4.3~xenial) xenial; urgency=low
 
