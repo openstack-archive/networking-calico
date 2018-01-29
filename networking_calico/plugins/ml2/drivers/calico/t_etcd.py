@@ -666,7 +666,7 @@ class StatusWatcher(object):
                         datamodel_v3.watch_subtree(
                             datamodel_v1.FELIX_STATUS_DIR,
                             start_revision=str(last_revision + 1))
-                except Exception as e:
+                except Exception:
                     # Log and handle by breaking out to the wider loop, which
                     # means we'll get the tree again and then try watching
                     # again.  E.g. it could be that the DB has just been

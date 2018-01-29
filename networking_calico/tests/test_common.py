@@ -26,10 +26,8 @@ class TestConfig(unittest.TestCase):
 
 
 from collections import namedtuple
-import copy
 import logging
 import mock
-import re
 
 
 import networking_calico.common as common

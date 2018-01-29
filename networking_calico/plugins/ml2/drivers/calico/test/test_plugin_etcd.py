@@ -28,10 +28,8 @@ import mock
 
 import networking_calico.plugins.ml2.drivers.calico.test.lib as lib
 
-from networking_calico import common
 from networking_calico import datamodel_v1
 from networking_calico import datamodel_v3
-from networking_calico.etcdutils import ResyncRequired
 from networking_calico.monotonic import monotonic_time
 from networking_calico.plugins.ml2.drivers.calico import mech_calico
 from networking_calico.plugins.ml2.drivers.calico import t_etcd
@@ -170,9 +168,10 @@ class _TestEtcdBase(lib.Lib, unittest.TestCase):
             eventlet.sleep(30)
             self.driver.db.create_or_update_agent = mock.Mock()
 
-        self.etcd_data[datamodel_v1.FELIX_STATUS_DIR + "/vm1/status"] = json.dumps({
-            "time": "2015-08-14T10:37:54"
-        })
+        self.etcd_data[datamodel_v1.FELIX_STATUS_DIR + "/vm1/status"] = \
+            json.dumps({
+                "time": "2015-08-14T10:37:54"
+            })
 
         # Prepare a read result object.
         read_result = mock.Mock()
@@ -216,7 +215,6 @@ class _TestEtcdBase(lib.Lib, unittest.TestCase):
             read_result.children = None
 
         return read_result
-
 
 
 class TestPluginEtcd(_TestEtcdBase):
@@ -434,8 +432,10 @@ class TestPluginEtcd(_TestEtcdBase):
         self.driver.update_port_postcommit(context)
 
         self.assertEtcdDeletes(set([ep_deadbeef_key_v1, ep_deadbeef_key_v3]))
-        ep_deadbeef_key_v1 = ep_deadbeef_key_v1.replace('felix-host-1', 'new-host')
-        ep_deadbeef_key_v3 = ep_deadbeef_key_v3.replace('felix--host--1', 'new--host')
+        ep_deadbeef_key_v1 = ep_deadbeef_key_v1.replace('felix-host-1',
+                                                        'new-host')
+        ep_deadbeef_key_v3 = ep_deadbeef_key_v3.replace('felix--host--1',
+                                                        'new--host')
         ep_deadbeef_value_v3['metadata']['name'] = \
             ep_deadbeef_value_v3['metadata']['name'].replace('felix--host--1',
                                                              'new--host')
@@ -457,8 +457,10 @@ class TestPluginEtcd(_TestEtcdBase):
         self.simulated_time_advance(mech_calico.RESYNC_INTERVAL_SECS)
 
         self.assertEtcdDeletes(set([ep_deadbeef_key_v1, ep_deadbeef_key_v3]))
-        ep_deadbeef_key_v1 = ep_deadbeef_key_v1.replace('new-host', 'felix-host-1')
-        ep_deadbeef_key_v3 = ep_deadbeef_key_v3.replace('new--host', 'felix--host--1')
+        ep_deadbeef_key_v1 = ep_deadbeef_key_v1.replace('new-host',
+                                                        'felix-host-1')
+        ep_deadbeef_key_v3 = ep_deadbeef_key_v3.replace('new--host',
+                                                        'felix--host--1')
         ep_deadbeef_value_v3['metadata']['name'] = \
             ep_deadbeef_value_v3['metadata']['name'].replace('new--host',
                                                              'felix--host--1')
@@ -621,10 +623,12 @@ class TestPluginEtcd(_TestEtcdBase):
             'kind': 'Profile',
             'metadata': {'name': 'openstack-sg-SG-1'},
             'spec': {'egress': [],
-                     'ingress': [{'action': 'Allow',
-                                  'destination': {'ports': ['5060:5061']},
-                                  'ipVersion': 4,
-                                  'source': {'selector': 'has(SGID-default)'}},],
+                     'ingress': [{
+                         'action': 'Allow',
+                         'destination': {'ports': ['5060:5061']},
+                         'ipVersion': 4,
+                         'source': {'selector': 'has(SGID-default)'}
+                     }],
                      'labelsToApply': {'SG-1': ''}}}
 
         self.assertEtcdWrites({sg_1_key_v3: sg_1_value_v3})
@@ -1085,7 +1089,7 @@ class TestPluginEtcd(_TestEtcdBase):
                                       'source': {
                                           'selector': 'has(SGID-default)'}}],
                          'labelsToApply': {'SGID-default': ''}}}
-        )}
+            )}
         with lib.FixedUUID('uuid-profile-prefixing'):
             self.give_way()
             self.simulated_time_advance(31)
@@ -1115,14 +1119,16 @@ class TestPluginEtcd(_TestEtcdBase):
                                       'destination': {'ports': ['1:65535']},
                                       'ipVersion': 4,
                                       'source': {
-                                         'selector': 'has(openstack-sg-OLD)'}},
+                                          'selector':
+                                          'has(openstack-sg-OLD)'}},
                                      {'action': 'Allow',
                                       'destination': {'ports': ['1:65535']},
                                       'ipVersion': 6,
                                       'source': {
-                                        'selector': 'has(openstack-sg-OLD)'}}],
+                                          'selector':
+                                          'has(openstack-sg-OLD)'}}],
                          'labelsToApply': {'openstack-sg-OLD': ''}}}
-        )}
+            )}
         with lib.FixedUUID('uuid-old-data'):
             self.give_way()
             self.simulated_time_advance(31)
@@ -1351,32 +1357,12 @@ class TestStatusWatcher(_TestEtcdBase):
         super(TestStatusWatcher, self).setUp()
         self.driver = mock.Mock(spec=mech_calico.CalicoMechanismDriver)
         self.watcher = t_etcd.StatusWatcher(self.driver)
-        #datamodel_v3.ut_get_new_client()
-        #self.assertEqual([mock.call(host='localhost',
-        #                            port=4001,
-        #                            protocol='http')],
-        #                 lib.m_etcd3gw.client.Etcd3Client.mock_calls)
 
     def test_tls(self):
         lib.m_compat.cfg.CONF.calico.etcd_cert_file = "cert-file"
         lib.m_compat.cfg.CONF.calico.etcd_ca_cert_file = "ca-cert-file"
         lib.m_compat.cfg.CONF.calico.etcd_key_file = "key-file"
         self.watcher = t_etcd.StatusWatcher(self.driver)
-        #lib.m_etcd3gw.client.Etcd3Client.reset_mock()
-        #datamodel_v3.ut_get_new_client()
-        #_log.info("lib.m_etcd3gw = %s", lib.m_etcd3gw)
-        #_log.info("lib.m_etcd3gw.client = %s", lib.m_etcd3gw.client)
-        #_log.info("lib.m_etcd3gw.client.Etcd3Client = %s", lib.m_etcd3gw.client.Etcd3Client)
-        _log.info("datamodel_v3._client = %s", datamodel_v3._client)
-        #_log.info("datamodel_v3.Etcd3Client = %s", datamodel_v3.Etcd3Client)
-        #self.assertEqual([mock.call(ca_cert='ca-cert-file',
-        #                            cert_cert='cert-file',
-        #                            cert_key='key-file',
-        #                            host='localhost',
-        #                            port=4001,
-        #                            protocol='https'),
-        #                  mock.call()],
-        #                 lib.m_etcd3gw.client.Etcd3Client.mock_calls)
 
     def test_snapshot(self):
         # Populate initial status tree data, for initial snapshot testing.
@@ -1397,13 +1383,16 @@ class TestStatusWatcher(_TestEtcdBase):
             'openstack/wlid/endpoint/ep2': '{"status": "up"}',
         }
 
-        # Arrange that the first watch call, on that status tree, will stop the watcher.
+        # Arrange that the first watch call, on that status tree, will stop the
+        # watcher.
         def _iterator():
             _log.info("Stop watcher now")
             self.watcher.stop()
             yield None
+
         def _cancel():
             pass
+
         self.clientv3.watch_prefix.return_value = _iterator(), _cancel
 
         # Start the watcher.  It will do initial snapshot processing, then stop
