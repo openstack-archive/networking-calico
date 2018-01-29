@@ -16,7 +16,7 @@ import logging
 import pbr.version
 
 
-logging.basicConfig(level=logging.DEBUG,
+logging.basicConfig(level=logging.INFO,
                     format='LOG: %(filename)s:%(lineno)d: %(message)s')
 
 

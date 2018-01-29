@@ -19,8 +19,8 @@ from etcd3gw.utils import _encode
 import json
 
 from networking_calico.compat import cfg
-#from networking_calico.compat import log
-import logging
+from networking_calico.compat import log
+
 
 # Particular JSON key strings.
 CLUSTER_GUID = 'clusterGUID'
@@ -30,8 +30,8 @@ ENDPOINT_REPORTING_ENABLED = 'endpointReportingEnabled'
 INTERFACE_PREFIX = 'interfacePrefix'
 
 
-LOG = logging.getLogger(__name__)
-LOG.setLevel(logging.DEBUG)
+LOG = log.getLogger(__name__)
+
 
 def put(resource_kind, name, spec, prev_index=None):
     client = _get_client()
@@ -74,7 +74,6 @@ def put(resource_kind, name, spec, prev_index=None):
 
 
 def get(resource_kind, name):
-    LOG.info("etcdv3 get")
     client = _get_client()
     key = _build_key(resource_kind, name)
     results = client.get(key, metadata=False)
