@@ -1401,12 +1401,10 @@ class TestStatusWatcher(_TestEtcdBase):
 
         self.driver.on_felix_alive.assert_called_once_with("hostname",
                                                            new=True)
-        self.assertEqual(
-            [
-                mock.call("unknown", "ep2", {"status": "up"}),
-                mock.call("hostname", "ep1", {"status": "up"}),
-            ],
-            self.driver.on_port_status_changed.mock_calls)
+        self.driver.on_port_status_changed.assert_has_calls([
+            mock.call("unknown", "ep2", {"status": "up"}),
+            mock.call("hostname", "ep1", {"status": "up"}),
+        ], any_order=True)
 
     def test_endpoint_status_add_delete(self):
         m_port_status_node = self._add_test_endpoint()
