@@ -319,11 +319,11 @@ class TestPluginEtcd(_TestEtcdBase):
         ep_deadbeef_key_v3 = (
             '/calico/resources/v3/projectcalico.org/workloadendpoints/' +
             'openstack/felix--host--1-openstack-' +
-            'DEADBEEF--1234--5678-DEADBEEF--1234--5678')
+            'instance--1-DEADBEEF--1234--5678')
         ep_facebeef_key_v3 = (
             '/calico/resources/v3/projectcalico.org/workloadendpoints/' +
             'openstack/felix--host--1-openstack-' +
-            'FACEBEEF--1234--5678-FACEBEEF--1234--5678')
+            'instance--2-FACEBEEF--1234--5678')
         ep_deadbeef_value_v1 = {
             "name": "tapDEADBEEF-12",
             "profile_ids": ["openstack-sg-SGID-default"],
@@ -349,8 +349,8 @@ class TestPluginEtcd(_TestEtcdBase):
         ep_deadbeef_value_v3 = {
             'apiVersion': 'projectcalico.org/v3',
             'kind': 'WorkloadEndpoint',
-            'metadata': {'name': 'felix--host--1-openstack-DEADBEEF' +
-                         '--1234--5678-DEADBEEF--1234--5678',
+            'metadata': {'name': 'felix--host--1-openstack-instance' +
+                         '--1-DEADBEEF--1234--5678',
                          'namespace': 'openstack'},
             'spec': {'endpoint': 'DEADBEEF-1234-5678',
                      'interfaceName': 'tapDEADBEEF-12',
@@ -362,12 +362,12 @@ class TestPluginEtcd(_TestEtcdBase):
                      'node': 'felix-host-1',
                      'orchestrator': 'openstack',
                      'profiles': ['openstack-sg-SGID-default'],
-                     'workload': 'DEADBEEF-1234-5678'}}
+                     'workload': 'instance-1'}}
         ep_facebeef_value_v3 = {
             'apiVersion': 'projectcalico.org/v3',
             'kind': 'WorkloadEndpoint',
-            'metadata': {'name': 'felix--host--1-openstack-FACEBEEF' +
-                         '--1234--5678-FACEBEEF--1234--5678',
+            'metadata': {'name': 'felix--host--1-openstack-instance' +
+                         '--2-FACEBEEF--1234--5678',
                          'namespace': 'openstack'},
             'spec': {'endpoint': 'FACEBEEF-1234-5678',
                      'interfaceName': 'tapFACEBEEF-12',
@@ -377,7 +377,7 @@ class TestPluginEtcd(_TestEtcdBase):
                      'node': 'felix-host-1',
                      'orchestrator': 'openstack',
                      'profiles': ['openstack-sg-SGID-default'],
-                     'workload': 'FACEBEEF-1234-5678'}}
+                     'workload': 'instance-2'}}
 
         expected_writes = copy.deepcopy(self.initial_etcd3_writes)
         expected_writes[
@@ -483,7 +483,7 @@ class TestPluginEtcd(_TestEtcdBase):
         ep_hello_key_v3 = (
             '/calico/resources/v3/projectcalico.org/workloadendpoints/' +
             'openstack/felix--host--2-openstack-' +
-            'HELLO--1234--5678-HELLO--1234--5678')
+            'instance--3-HELLO--1234--5678')
         ep_hello_value_v1 = {
             "name": "tapHELLO-1234-",
             "profile_ids": ["openstack-sg-SGID-default"],
@@ -497,8 +497,8 @@ class TestPluginEtcd(_TestEtcdBase):
         ep_hello_value_v3 = {
             'apiVersion': 'projectcalico.org/v3',
             'kind': 'WorkloadEndpoint',
-            'metadata': {'name': 'felix--host--2-openstack-HELLO' +
-                         '--1234--5678-HELLO--1234--5678',
+            'metadata': {'name': 'felix--host--2-openstack-instance' +
+                         '--3-HELLO--1234--5678',
                          'namespace': 'openstack'},
             'spec': {'endpoint': 'HELLO-1234-5678',
                      'interfaceName': 'tapHELLO-1234-',
@@ -508,7 +508,7 @@ class TestPluginEtcd(_TestEtcdBase):
                      'node': 'felix-host-2',
                      'orchestrator': 'openstack',
                      'profiles': ['openstack-sg-SGID-default'],
-                     'workload': 'HELLO-1234-5678'}}
+                     'workload': 'instance-3'}}
 
         expected_writes = {
             ep_hello_key_v1: ep_hello_value_v1,

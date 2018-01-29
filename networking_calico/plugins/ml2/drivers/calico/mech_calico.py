@@ -1524,7 +1524,7 @@ def endpoint_name(port):
         return s.replace("-", "--")
     return "%s-openstack-%s-%s" % (
         escape_dashes(port['binding:host_id']),
-        escape_dashes(port['id']),
+        escape_dashes(port['device_id']),
         escape_dashes(port['id']),
     )
 
@@ -1539,7 +1539,7 @@ def endpoint_spec(port):
     # Construct the simpler spec data.
     data = {
         'orchestrator': 'openstack',
-        'workload': port['id'],
+        'workload': port['device_id'],
         'node': port['binding:host_id'],
         'endpoint': port['id'],
         'interfaceName': port['interface_name'],
