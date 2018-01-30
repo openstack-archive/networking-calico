@@ -23,7 +23,6 @@ import json
 import netaddr
 import re
 import socket
-import time
 import uuid
 import weakref
 
@@ -37,6 +36,7 @@ from networking_calico.compat import log
 from networking_calico import datamodel_v1
 from networking_calico import datamodel_v3
 from networking_calico import etcdutils
+from networking_calico.monotonic import monotonic_time
 from networking_calico.plugins.ml2.drivers.calico.election import Elector
 
 
@@ -677,7 +677,7 @@ class StatusWatcher(object):
 
                 # Record time of last activity on the successfully created
                 # watch.  (This is updated below as we see watch events.)
-                last_event_time = time.gmtime()
+                last_event_time = monotonic_time()
 
                 def _cancel_watch_if_inactive():
                     # Loop until we should cancel the watch, either because of
@@ -685,7 +685,7 @@ class StatusWatcher(object):
                     while not self._stopped:
                         time_to_next_timeout = (last_event_time +
                                                 WATCH_TIMEOUT_SECS -
-                                                time.gmtime())
+                                                monotonic_time())
                         LOG.debug("Time to next timeout is %ds",
                                   time_to_next_timeout)
                         if time_to_next_timeout < 1:
@@ -707,7 +707,7 @@ class StatusWatcher(object):
 
                 for event in event_stream:
                     LOG.debug("status event: %s", event)
-                    last_event_time = time.gmtime()
+                    last_event_time = monotonic_time()
 
                     # If the StatusWatcher has been stopped, return from the
                     # whole loop.
