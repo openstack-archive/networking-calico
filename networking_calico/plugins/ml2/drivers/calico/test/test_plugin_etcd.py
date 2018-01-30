@@ -143,7 +143,7 @@ class _TestEtcdBase(lib.Lib, unittest.TestCase):
         results = []
         for key, value in self.etcd_data.items():
             if key.startswith(prefix):
-                result = (value, {'version': 0, 'key': key})
+                result = (value, {'mod_revision': 0, 'key': key})
                 results.append(result)
 
         # Print and return the result.

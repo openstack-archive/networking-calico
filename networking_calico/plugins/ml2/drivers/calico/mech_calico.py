@@ -1155,12 +1155,12 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             endpoints = []
             endpoint_ids = set()
             for result in datamodel_v3.get_all("WorkloadEndpoint"):
-                name, spec, modified_index = result
+                name, spec, mod_revision = result
                 LOG.debug("Found endpoint %s", name)
                 endpoints.append(t_etcd.Endpoint(
                     id=spec['endpoint'],
                     key=name,
-                    modified_index=modified_index,
+                    modified_index=mod_revision,
                     host=spec['node'],
                     data=spec,
                 ))
@@ -1327,7 +1327,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                         datamodel_v3.put("WorkloadEndpoint",
                                          endpoint_name(port),
                                          neutron_data,
-                                         prev_index=endpoint.modified_index)
+                                         mod_revision=endpoint.modified_index)
                     else:
                         self.transport.write_port_to_etcd(
                             port, prev_index=endpoint.modified_index
@@ -1446,7 +1446,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 try:
                     self.transport.write_profile_to_etcd(
                         neutron_profile,
-                        prev_index=etcd_profile.modified_index,
+                        mod_revision=etcd_profile.modified_index,
                     )
                 except (etcd.EtcdCompareFailed, etcd.EtcdKeyNotFound):
                     # If someone wrote to etcd they probably have more recent

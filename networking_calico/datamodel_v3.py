@@ -33,7 +33,24 @@ INTERFACE_PREFIX = 'interfacePrefix'
 LOG = log.getLogger(__name__)
 
 
-def put(resource_kind, name, spec, prev_index=None):
+def put(resource_kind, name, spec, mod_revision=None):
+    """Write a Calico v3 resource to etcd.
+
+    - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
+
+    - name (string): The resource's name.  This is used to form its etcd key,
+      and also goes in its .Metadata.Name field.
+
+    - spec (dict): Resource spec, as a dict with keys as specified by the
+      'json:' comments in the relevant golang struct definition (for example,
+      https://github.com/projectcalico/libcalico-go/blob/master/
+      lib/apis/v3/workloadendpoint.go#L38).
+
+    - mod_revision (string): If specified, indicates that the write should only
+      proceed if replacing an existing value with that mod_revision.
+
+    Returns True if the write happened successfully; False if not.
+    """
     client = _get_client()
     key = _build_key(resource_kind, name)
     value = {
@@ -48,15 +65,15 @@ def put(resource_kind, name, spec, prev_index=None):
         value['metadata']['namespace'] = 'openstack'
     LOG.debug("etcdv3 put key=%s value=%s", key, value)
     value_as_string = json.dumps(value)
-    if prev_index:
+    if mod_revision:
         base64_key = _encode(key)
         base64_value = _encode(value_as_string)
         result = client.transaction({
             'compare': [{
                 'key': base64_key,
                 'result': 'EQUAL',
-                'target': 'VERSION',
-                'version': prev_index,
+                'target': 'MOD',
+                'mod_revision': mod_revision,
             }],
             'success': [{
                 'request_put': {
@@ -74,6 +91,19 @@ def put(resource_kind, name, spec, prev_index=None):
 
 
 def get(resource_kind, name):
+    """Read spec of a Calico v3 resource from etcd.
+
+    - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
+
+    - name (string): The resource's name, which is used to form its etcd key.
+
+    Returns the resource spec as a dict with keys as specified by the 'json:'
+    comments in the relevant golang struct definition (for example,
+    https://github.com/projectcalico/libcalico-go/blob/master/
+    lib/apis/v3/workloadendpoint.go#L38).
+
+    Raises EtcdKeyNotFound if there is no resource with that kind and name.
+    """
     client = _get_client()
     key = _build_key(resource_kind, name)
     results = client.get(key, metadata=False)
@@ -85,6 +115,23 @@ def get(resource_kind, name):
 
 
 def get_all(resource_kind):
+    """Read all Calico v3 resources of a certain kind from etcd.
+
+    - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
+
+    Returns a list of tuples (name, spec, mod_revision), one for each resource
+    of the specified kind, in which:
+
+    - name is the resource's name (a string)
+
+    - spec is a dict with keys as specified by the 'json:' comments in the
+      relevant golang struct definition (for example,
+      https://github.com/projectcalico/libcalico-go/blob/master/
+      lib/apis/v3/workloadendpoint.go#L38).
+
+    - mod_revision is the revision at which that resource was last modified (an
+      integer represented as a string).
+    """
     client = _get_client()
     prefix = _build_key(resource_kind, '')
     results = client.get_prefix(prefix)
@@ -97,13 +144,21 @@ def get_all(resource_kind):
         tuple = (
             value_dict['metadata']['name'],
             value_dict['spec'],
-            item['version']
+            item['mod_revision']
         )
         tuples.append(tuple)
     return tuples
 
 
 def delete(resource_kind, name):
+    """Delete a Calico v3 resource from etcd.
+
+    - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
+
+    - name (string): The resource's name, which is used to form its etcd key.
+
+    Returns True if the deletion was successful; False if not.
+    """
     client = _get_client()
     key = _build_key(resource_kind, name)
     LOG.debug("etcdv3 delete key=%s", key)
@@ -113,6 +168,22 @@ def delete(resource_kind, name):
 
 
 def get_prefix(prefix):
+    """Read all etcdv3 data whose key begins with a given prefix.
+
+    - prefix (string): The prefix.
+
+    Returns a list of tuples (key, value), one for each key-value pair, in
+    which:
+
+    - key is the etcd key (a string)
+
+    - value is the etcd value (also a string; note *not* JSON-decoded).
+
+    Note: this entrypoint is only used for data outside the Calico v3 data
+    model; specifically for legacy Calico v1 status notifications.  This
+    entrypoint should be removed once those status notifications have been
+    reimplemented within the Calico v3 data model.
+    """
     client = _get_client()
     results = client.get_prefix(prefix)
     LOG.debug("etcdv3 get_prefix %s results=%s", prefix, len(results))
@@ -124,14 +195,49 @@ def get_prefix(prefix):
     return tuples
 
 
-def watch_subtree(prefix, **kwargs):
+def watch_subtree(prefix, start_revision):
+    """Watch for changes to etcdv3 data whose key begins with a given prefix.
+
+    - prefix (string): The prefix.
+
+    - start_revision (string representation of an integer): The revision to
+      start watching from.  Events will be reported beginning from, and
+      including, this revision.
+
+    Returns a tuple (event_stream, cancel), in which:
+
+    - event_stream is a generator that returns the next reported event, or None
+      if cancel has been called.  Each event is a dict like
+
+      {'kv': {'key': <string>,
+              'value': <string>,
+              'mod_revision': <string>,
+              'create_revision': <string>,
+              'version': <string>}}
+
+      or
+
+      {'type': 'DELETE',
+       'kv': {'key': <key>,
+              'mod_revision': <string>}}
+
+    - cancel is a thunk that can be called to cancel the watch and cause the
+      event_stream to return None.
+
+    Note: this entrypoint is only used for data outside the Calico v3 data
+    model; specifically for legacy Calico v1 status notifications.  This
+    entrypoint should be updated or removed when those status notifications
+    have been reimplemented within the Calico v3 data model.
+    """
     LOG.info("Watch subtree %s", prefix)
     client = _get_client()
-    event_stream, cancel = client.watch_prefix(prefix, **kwargs)
+    event_stream, cancel = client.watch_prefix(prefix,
+                                               start_revision=start_revision)
     return event_stream, cancel
 
 
 def get_current_revision():
+    """Get the current etcdv3 revision."""
     client = _get_client()
     status = client.status()
     LOG.debug("etcdv3 status %s", status)

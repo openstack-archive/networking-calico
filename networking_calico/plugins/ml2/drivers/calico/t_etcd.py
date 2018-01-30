@@ -224,14 +224,14 @@ class CalicoTransportEtcd(object):
         return self.elector.master()
 
     @_handling_etcd_exceptions
-    def write_profile_to_etcd(self, profile, prev_index=None):
+    def write_profile_to_etcd(self, profile, mod_revision=None):
         """Convert and write a SecurityProfile to etcdv3."""
         LOG.debug("Writing profile %s", profile)
         name = with_openstack_sg_prefix(profile.id)
         datamodel_v3.put("Profile",
                          name,
                          profile_spec(profile),
-                         prev_index=prev_index)
+                         mod_revision=mod_revision)
 
     @_handling_etcd_exceptions
     def subnet_created(self, subnet, prev_index=None):
@@ -340,8 +340,10 @@ class CalicoTransportEtcd(object):
             cluster_info[datamodel_v3.CLUSTER_TYPE] = "openstack"
             rewrite_cluster_info = True
 
-        # TODO(nj): Do we need to ensure that the Calico version field is set?
-        # It may be that we don't need this for Calico/OpenStack operation.
+        # Note, we don't touch the Calico version field here, as we don't know
+        # it.  (With other orchestrators, it is calico/node's responsibility to
+        # set the Calico version.  But we don't run calico/node in Calico for
+        # OpenStack.)
 
         # Set the datastore to ready, if it isn't already.
         if not cluster_info.get(datamodel_v3.DATASTORE_READY, False):
@@ -546,12 +548,12 @@ class CalicoTransportEtcd(object):
         LOG.info("Scanning etcdv3 for all profiles")
 
         for result in datamodel_v3.get_all("Profile"):
-            name, spec, modified_index = result
+            name, spec, mod_revision = result
             if name.startswith(OPENSTACK_SG_PREFIX):
                 LOG.debug("Found profile %s", name)
                 yield Profile(
                     id=without_openstack_sg_prefix(name),
-                    modified_index=modified_index,
+                    modified_index=mod_revision,
                     spec=spec,
                 )
 
@@ -665,7 +667,7 @@ class StatusWatcher(object):
                     event_stream, cancel = \
                         datamodel_v3.watch_subtree(
                             datamodel_v1.FELIX_STATUS_DIR,
-                            start_revision=str(last_revision + 1))
+                            str(last_revision + 1))
                 except Exception:
                     # Log and handle by breaking out to the wider loop, which
                     # means we'll get the tree again and then try watching
