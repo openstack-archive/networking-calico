@@ -347,6 +347,7 @@ class CalicoTransportEtcd(object):
 
         # Set the datastore to ready, if it isn't already.
         if not cluster_info.get(datamodel_v3.DATASTORE_READY, False):
+# Shaun: You should set it to True if not present, but leave as False if explicitly set to False.
             cluster_info[datamodel_v3.DATASTORE_READY] = True
             rewrite_cluster_info = True
 
@@ -906,6 +907,7 @@ def _neutron_rule_to_etcd_rule(rule):
         # single number, or a string describing a port range.
         if rule['port_range_min'] == -1:
             port_spec = ['1:65535']
+# Shaun: Surely we should [not] include a port match in this case?
         elif rule['port_range_min'] == rule['port_range_max']:
             if rule['port_range_min'] is not None:
                 port_spec = [rule['port_range_min']]

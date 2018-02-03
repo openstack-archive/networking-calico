@@ -1304,6 +1304,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             try:
                 if v3_datamodel:
                     etcd_data = endpoint.data
+# Shaun: Shouldn't this unpacking be done at the transport layer?
                 else:
                     etcd_data = json.loads(endpoint.data)
             except (ValueError, TypeError):
