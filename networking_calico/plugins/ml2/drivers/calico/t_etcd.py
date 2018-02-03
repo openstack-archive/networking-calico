@@ -345,9 +345,13 @@ class CalicoTransportEtcd(object):
         # set the Calico version.  But we don't run calico/node in Calico for
         # OpenStack.)
 
-        # Set the datastore to ready, if it isn't already.
-        if not cluster_info.get(datamodel_v3.DATASTORE_READY, False):
-# Shaun: You should set it to True if not present, but leave as False if explicitly set to False.
+        # Set the datastore to ready, if the datastore readiness state isn't
+        # already set at all.  This field is intentionally tri-state, i.e. it
+        # can be explicitly True, explicitly False, or not set.  If it has been
+        # set explicitly to False, that is probably because another
+        # orchestrator is doing an upgrade or wants for some other reason to
+        # suspend processing of the Calico datastore.
+        if datamodel_v3.DATASTORE_READY not in cluster_info:
             cluster_info[datamodel_v3.DATASTORE_READY] = True
             rewrite_cluster_info = True
 
