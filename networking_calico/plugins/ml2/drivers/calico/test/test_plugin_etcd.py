@@ -255,11 +255,9 @@ class TestPluginEtcd(_TestEtcdBase):
                             {'action': 'Allow',
                              'ipVersion': 6}],
                  'ingress': [{'action': 'Allow',
-                              'destination': {'ports': ['1:65535']},
                               'ipVersion': 4,
                               'source': {'selector': 'has(SGID-default)'}},
                              {'action': 'Allow',
-                              'destination': {'ports': ['1:65535']},
                               'ipVersion': 6,
                               'source': {
                                   'selector': 'has(SGID-default)'}}],
@@ -1079,12 +1077,10 @@ class TestPluginEtcd(_TestEtcdBase):
                                     {'action': 'Allow',
                                      'ipVersion': 6}],
                          'ingress': [{'action': 'Allow',
-                                      'destination': {'ports': ['1:65535']},
                                       'ipVersion': 4,
                                       'source': {
                                           'selector': 'has(SGID-default)'}},
                                      {'action': 'Allow',
-                                      'destination': {'ports': ['1:65535']},
                                       'ipVersion': 6,
                                       'source': {
                                           'selector': 'has(SGID-default)'}}],
@@ -1116,13 +1112,11 @@ class TestPluginEtcd(_TestEtcdBase):
                                     {'action': 'Allow',
                                      'ipVersion': 6}],
                          'ingress': [{'action': 'Allow',
-                                      'destination': {'ports': ['1:65535']},
                                       'ipVersion': 4,
                                       'source': {
                                           'selector':
                                           'has(openstack-sg-OLD)'}},
                                      {'action': 'Allow',
-                                      'destination': {'ports': ['1:65535']},
                                       'ipVersion': 6,
                                       'source': {
                                           'selector':

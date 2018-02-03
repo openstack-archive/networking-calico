@@ -910,8 +910,7 @@ def _neutron_rule_to_etcd_rule(rule):
         # src/dst_ports is a list in which each entry can be a
         # single number, or a string describing a port range.
         if rule['port_range_min'] == -1:
-            port_spec = ['1:65535']
-# Shaun: Surely we should [not] include a port match in this case?
+            port_spec = None
         elif rule['port_range_min'] == rule['port_range_max']:
             if rule['port_range_min'] is not None:
                 port_spec = [rule['port_range_min']]
