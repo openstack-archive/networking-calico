@@ -36,6 +36,7 @@ from networking_calico.compat import log
 from networking_calico import datamodel_v1
 from networking_calico import datamodel_v3
 from networking_calico import etcdutils
+from networking_calico import etcdv3
 from networking_calico.monotonic import monotonic_time
 from networking_calico.plugins.ml2.drivers.calico.election import Elector
 
@@ -315,14 +316,16 @@ class CalicoTransportEtcd(object):
             # will also take care to avoid an overlapping write with some other
             # orchestrator.
             try:
-                cluster_info, ci_mod_revision = \
-                    datamodel_v3.get_with_mod_revision("ClusterInformation",
-                                                       "default")
-            except etcd.EtcdKeyNotFound:
+                cluster_info, ci_mod_revision = datamodel_v3.get(
+                    "ClusterInformation",
+                    "default")
+            except etcdv3.KeyNotFound:
                 cluster_info = {}
                 ci_mod_revision = 0
             rewrite_cluster_info = False
-            LOG.info("Read ClusterInformation: %s", cluster_info)
+            LOG.info("Read ClusterInformation %s mod_revision %r",
+                     cluster_info,
+                     ci_mod_revision)
 
             # Generate a cluster GUID if there isn't one already.
             if not cluster_info.get(datamodel_v3.CLUSTER_GUID):
@@ -375,14 +378,16 @@ class CalicoTransportEtcd(object):
             # will also take care to avoid an overlapping write with some other
             # orchestrator.
             try:
-                felix_config, fc_mod_revision = \
-                    datamodel_v3.get_with_mod_revision("FelixConfiguration",
-                                                       "default")
-            except etcd.EtcdKeyNotFound:
+                felix_config, fc_mod_revision = datamodel_v3.get(
+                    "FelixConfiguration",
+                    "default")
+            except etcdv3.KeyNotFound:
                 felix_config = {}
                 fc_mod_revision = 0
             rewrite_felix_config = False
-            LOG.info("Read FelixConfiguration: %s", felix_config)
+            LOG.info("Read FelixConfiguration %s mod_revision %r",
+                     felix_config,
+                     fc_mod_revision)
 
             # Enable endpoint reporting.
             if not felix_config.get(datamodel_v3.ENDPOINT_REPORTING_ENABLED,
@@ -683,10 +688,12 @@ class StatusWatcher(object):
         self._stopped = False
 
         while not self._stopped:
-            # Get the current etcdv3 revision, so we know when to start
+            # Get the current etcdv3 cluster ID and revision, so (a) we can
+            # detect if the cluster ID changes, and (b) we know when to start
             # watching from.
-            last_revision = int(datamodel_v3.get_current_revision())
-            LOG.info("Current etcdv3 revision is %d", last_revision)
+            cluster_id, last_revision = etcdv3.get_status()
+            last_revision = int(last_revision)
+            LOG.info("Current cluster_id %s, revision %d", last_revision)
 
             # Save off current endpoint status, then reset current state, so we
             # will be able to identify any changes in the new snapshot.
@@ -695,9 +702,8 @@ class StatusWatcher(object):
             self._endpoints_by_host = collections.defaultdict(set)
 
             # Report any existing values.
-            for result in datamodel_v3.get_prefix(
-                    datamodel_v1.FELIX_STATUS_DIR):
-                key, value = result
+            for result in etcdv3.get_prefix(datamodel_v1.FELIX_STATUS_DIR):
+                key, value, _ = result
                 # Convert to what the dispatcher expects - see below.
                 response = Response(
                     action='set',
@@ -748,12 +754,18 @@ class StatusWatcher(object):
 
             # Now watch for any changes, starting after the revision above.
             while not self._stopped:
-                # Start a watch from just after the last known revision.
                 try:
-                    event_stream, cancel = \
-                        datamodel_v3.watch_subtree(
-                            datamodel_v1.FELIX_STATUS_DIR,
-                            str(last_revision + 1))
+                    # Check for cluster ID changing.
+                    cluster_id_now, _ = etcdv3.get_status()
+                    LOG.debug("Now cluster_id is %s", cluster_id_now)
+                    if cluster_id_now != cluster_id:
+                        LOG.info("Cluster ID changed, resync")
+                        break
+
+                    # Start a watch from just after the last known revision.
+                    event_stream, cancel = etcdv3.watch_subtree(
+                        datamodel_v1.FELIX_STATUS_DIR,
+                        str(last_revision + 1))
                 except Exception:
                     # Log and handle by breaking out to the wider loop, which
                     # means we'll get the tree again and then try watching

@@ -15,32 +15,16 @@
 """
 Stub version of the etcd interface.
 """
+from etcd3gw.utils import _decode
 import eventlet
 from eventlet.event import Event
 import logging
 
+from networking_calico import etcdv3
+
+
 # Logger
 log = logging.getLogger(__name__)
-
-
-class EtcdException(Exception):
-    pass
-
-
-class EtcdKeyNotFound(EtcdException):
-    pass
-
-
-class EtcdClusterIdChanged(EtcdException):
-    pass
-
-
-class EtcdConnectionFailed(EtcdException):
-    pass
-
-
-class EtcdEventIndexCleared(EtcdException):
-    pass
 
 
 class NoMoreResults(Exception):
@@ -60,6 +44,28 @@ class Client(object):
         self.stop = Event()
         self.no_more_results = Event()
         self.failure = None
+        self.next_lease_id = 100000
+
+    def get(self, key, metadata=False):
+        assert metadata, "Always expect get() call with metadata=True"
+        try:
+            result = self.read(key)
+            mod_revision = 10
+            if result.etcd_index != 0:
+                mod_revision = result.etcd_index
+            return [(result.value, {'mod_revision': str(mod_revision)})]
+        except etcdv3.KeyNotFound:
+            return []
+
+    def watch_once(self, key, timeout=None, **kwargs):
+        result = self.read(key)
+        mod_revision = 10
+        if result.etcd_index != 0:
+            mod_revision = result.etcd_index
+        return {'kv': {
+            'value': result.value,
+            'mod_revision': mod_revision
+        }}
 
     def read(self, path, **kwargs):
         try:
@@ -78,6 +84,21 @@ class Client(object):
             raise result.exception
         log.debug("Return read result %s", result)
         return result
+
+    def put(self, key, value, lease=None):
+        self.write(key, value)
+        return True
+
+    def transaction(self, txn):
+        put_request = txn['success'][0]['request_put']
+        succeeded = self.put(_decode(put_request['key']),
+                             _decode(put_request['value']))
+        return {'succeeded': succeeded}
+
+    def lease(self, ttl):
+        l = Lease(self.next_lease_id)
+        self.next_lease_id += 1
+        return l
 
     def write(self, path, value, **kwargs):
         log.debug("Write of %s to %s", value, path)
@@ -125,3 +146,8 @@ class EtcdResult(object):
     def __str__(self):
         return ("key=%s, value=%s, action=%s,index=%d" %
                 (self.key, self.value, self.action, self.etcd_index))
+
+
+class Lease(object):
+    def __init__(self, id):
+        self.id = id
