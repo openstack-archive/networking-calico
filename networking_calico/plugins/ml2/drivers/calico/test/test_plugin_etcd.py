@@ -22,6 +22,7 @@ import copy
 import json
 import unittest
 
+from etcd3gw.utils import _decode
 import eventlet
 import logging
 import mock
@@ -29,7 +30,7 @@ import mock
 import networking_calico.plugins.ml2.drivers.calico.test.lib as lib
 
 from networking_calico import datamodel_v1
-from networking_calico import datamodel_v3
+from networking_calico import etcdv3
 from networking_calico.monotonic import monotonic_time
 from networking_calico.plugins.ml2.drivers.calico import mech_calico
 from networking_calico.plugins.ml2.drivers.calico import t_etcd
@@ -54,14 +55,15 @@ class _TestEtcdBase(lib.Lib, unittest.TestCase):
         self.client.write.side_effect = self.check_etcd_write
         self.client.delete.side_effect = self.check_etcd_delete
 
-        # Hook the (mock) etcdv3 client.
-        datamodel_v3._client = self.clientv3 = mock.Mock()
+        # Insinuate a mock etcd3gw client.
+        etcdv3._client = self.clientv3 = mock.Mock()
         self.clientv3.put.side_effect = self.check_etcd_write
+        self.clientv3.transaction.side_effect = self.etcd3_transaction
         self.clientv3.delete.side_effect = self.etcd3_delete
         self.clientv3.get.side_effect = self.etcd3_get
         self.clientv3.get_prefix.side_effect = self.etcd3_get_prefix
         self.clientv3.status.return_value = {
-            'header': {'revision': '10'},
+            'header': {'revision': '10', 'cluster_id': '1234abcd'},
         }
 
         # Start with an empty set of recent writes and deletes.
@@ -155,16 +157,16 @@ class _TestEtcdBase(lib.Lib, unittest.TestCase):
         self.maybe_reset_etcd()
         if key in self.etcd_data:
             value = self.etcd_data[key]
-        else:
-            raise lib.m_etcd.EtcdKeyNotFound()
 
-        # Print and return the result.
-        _log.info("etcd3 get: %s; value: %s", key, value)
-        if metadata:
-            item = {'key': key, 'mod_revision': '10'}
-            return [(value, item)]
+            # Print and return the result.
+            _log.info("etcd3 get: %s; value: %s", key, value)
+            if metadata:
+                item = {'key': key, 'mod_revision': '10'}
+                return [(value, item)]
+            else:
+                return [value]
         else:
-            return [value]
+            return []
 
     def etcd3_get_prefix(self, prefix):
         self.maybe_reset_etcd()
@@ -184,6 +186,12 @@ class _TestEtcdBase(lib.Lib, unittest.TestCase):
             return True
         except lib.EtcdKeyNotFound:
             return False
+
+    def etcd3_transaction(self, txn):
+        put_request = txn['success'][0]['request_put']
+        succeeded = self.check_etcd_write(_decode(put_request['key']),
+                                          _decode(put_request['value']))
+        return {'succeeded': succeeded}
 
     def etcd_read(self, key, wait=False, waitIndex=None, recursive=False,
                   timeout=None):
