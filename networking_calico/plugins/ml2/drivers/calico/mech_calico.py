@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2014, 2015, 2018 Metaswitch Networks
+# Copyright (c) 2014, 2015 Metaswitch Networks
 # Copyright (c) 2013 OpenStack Foundation
+# Copyright (c) 2018 Tigera, Inc. All rights reserved.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -323,7 +324,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                     LOG.info("Became the master, starting StatusWatcher")
                     self._etcd_watcher = t_etcd.StatusWatcher(self)
                     self._etcd_watcher_thread = eventlet.spawn(
-                        self._etcd_watcher.loop
+                        self._etcd_watcher.start
                     )
                     LOG.info("Started %s as %s",
                              self._etcd_watcher, self._etcd_watcher_thread)

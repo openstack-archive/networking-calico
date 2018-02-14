@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2015, 2018 Metaswitch Networks
+# Copyright (c) 2015 Metaswitch Networks
+# Copyright (c) 2018 Tigera, Inc. All rights reserved.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -36,7 +37,7 @@ from networking_calico.compat import log
 from networking_calico import datamodel_v1
 from networking_calico import datamodel_v3
 from networking_calico import etcdutils
-from networking_calico.monotonic import monotonic_time
+from networking_calico import etcdv3
 from networking_calico.plugins.ml2.drivers.calico.election import Elector
 
 
@@ -68,7 +69,6 @@ LOG = log.getLogger(__name__)
 # be refreshed.
 MASTER_REFRESH_INTERVAL = 10
 MASTER_TIMEOUT = 60
-WATCH_TIMEOUT_SECS = 10
 
 # Objects for lightly wrapping etcd return values for use in the mechanism
 # driver.
@@ -90,9 +90,6 @@ Profile = collections.namedtuple(
 )
 Subnet = collections.namedtuple(
     'Subnet', ['id', 'modified_index', 'data']
-)
-Response = collections.namedtuple(
-    'Response', ['action', 'key', 'value']
 )
 
 
@@ -206,7 +203,6 @@ class CalicoTransportEtcd(object):
                                  cert=tls_cert,
                                  ca_cert=tls_ca_cert)
             elector = Elector(
-                client=client,
                 server_id=calico_cfg.elector_name,
                 election_key=datamodel_v1.NEUTRON_ELECTION_KEY,
                 interval=MASTER_REFRESH_INTERVAL,
@@ -315,14 +311,16 @@ class CalicoTransportEtcd(object):
             # will also take care to avoid an overlapping write with some other
             # orchestrator.
             try:
-                cluster_info, ci_mod_revision = \
-                    datamodel_v3.get_with_mod_revision("ClusterInformation",
-                                                       "default")
-            except etcd.EtcdKeyNotFound:
+                cluster_info, ci_mod_revision = datamodel_v3.get(
+                    "ClusterInformation",
+                    "default")
+            except etcdv3.KeyNotFound:
                 cluster_info = {}
                 ci_mod_revision = 0
             rewrite_cluster_info = False
-            LOG.info("Read ClusterInformation: %s", cluster_info)
+            LOG.info("Read ClusterInformation %s mod_revision %r",
+                     cluster_info,
+                     ci_mod_revision)
 
             # Generate a cluster GUID if there isn't one already.
             if not cluster_info.get(datamodel_v3.CLUSTER_GUID):
@@ -375,14 +373,16 @@ class CalicoTransportEtcd(object):
             # will also take care to avoid an overlapping write with some other
             # orchestrator.
             try:
-                felix_config, fc_mod_revision = \
-                    datamodel_v3.get_with_mod_revision("FelixConfiguration",
-                                                       "default")
-            except etcd.EtcdKeyNotFound:
+                felix_config, fc_mod_revision = datamodel_v3.get(
+                    "FelixConfiguration",
+                    "default")
+            except etcdv3.KeyNotFound:
                 felix_config = {}
                 fc_mod_revision = 0
             rewrite_felix_config = False
-            LOG.info("Read FelixConfiguration: %s", felix_config)
+            LOG.info("Read FelixConfiguration %s mod_revision %r",
+                     felix_config,
+                     fc_mod_revision)
 
             # Enable endpoint reporting.
             if not felix_config.get(datamodel_v3.ENDPOINT_REPORTING_ENABLED,
@@ -633,7 +633,7 @@ class CalicoTransportEtcd(object):
         self.elector.stop()
 
 
-class StatusWatcher(object):
+class StatusWatcher(etcdutils.EtcdWatcher):
     """A class that watches our status-reporting subtree.
 
     Status events use the Calico v1 data model, under
@@ -644,19 +644,17 @@ class StatusWatcher(object):
 
     Entrypoints:
     - StatusWatcher(calico_driver) (constructor)
-    - watcher.loop()
+    - watcher.start()
     - watcher.stop()
 
-    Callbacks (from the thread of watcher.loop()):
+    Callbacks (from the thread of watcher.start()):
     - calico_driver.on_port_status_changed
     - calico_driver.on_felix_alive
     """
 
     def __init__(self, calico_driver):
-        LOG.info("StatusWatcher created")
+        super(StatusWatcher, self).__init__(datamodel_v1.FELIX_STATUS_DIR)
         self.calico_driver = calico_driver
-        self.cancel = None
-        self.dispatcher = etcdutils.PathDispatcher()
 
         # Track the set of endpoints that are on each host so we can generate
         # endpoint notifications if a Felix goes down.
@@ -666,212 +664,65 @@ class StatusWatcher(object):
         self._hosts_with_live_felix = set()
 
         # Register for felix uptime updates.
-        self.dispatcher.register(datamodel_v1.FELIX_STATUS_DIR +
-                                 "/<hostname>/status",
-                                 on_set=self._on_status_set,
-                                 on_del=self._on_status_del)
+        self.register_path(datamodel_v1.FELIX_STATUS_DIR +
+                           "/<hostname>/status",
+                           on_set=self._on_status_set,
+                           on_del=self._on_status_del)
         # Register for per-port status updates.
-        self.dispatcher.register(datamodel_v1.FELIX_STATUS_DIR +
-                                 "/<hostname>/workload/openstack/"
-                                 "<workload>/endpoint/<endpoint>",
-                                 on_set=self._on_ep_set,
-                                 on_del=self._on_ep_delete)
-        self._stopped = False
+        self.register_path(datamodel_v1.FELIX_STATUS_DIR +
+                           "/<hostname>/workload/openstack/"
+                           "<workload>/endpoint/<endpoint>",
+                           on_set=self._on_ep_set,
+                           on_del=self._on_ep_delete)
+        LOG.info("StatusWatcher created")
 
-    def loop(self):
-        LOG.info("Start watching status tree")
-        self._stopped = False
+    def _pre_snapshot_hook(self):
+        # Save off current endpoint status, then reset current state, so we
+        # will be able to identify any changes in the new snapshot.
+        old_endpoints_by_host = self._endpoints_by_host
+        self._hosts_with_live_felix = set()
+        self._endpoints_by_host = collections.defaultdict(set)
+        return old_endpoints_by_host
 
-        while not self._stopped:
-            # Get the current etcdv3 revision, so we know when to start
-            # watching from.
-            last_revision = int(datamodel_v3.get_current_revision())
-            LOG.info("Current etcdv3 revision is %d", last_revision)
+    def _post_snapshot_hook(self, old_endpoints_by_host):
+        # Collect hosts for each old endpoint status.  For each of those hosts
+        # we will check if we now have a Felix status.
+        all_hosts_with_endpoint_status = set()
+        for hostname in old_endpoints_by_host.keys():
+            all_hosts_with_endpoint_status.add(hostname)
 
-            # Save off current endpoint status, then reset current state, so we
-            # will be able to identify any changes in the new snapshot.
-            old_endpoints_by_host = self._endpoints_by_host
-            self._hosts_with_live_felix = set()
-            self._endpoints_by_host = collections.defaultdict(set)
+        # There might be new endpoint statuses with new hosts, for which we
+        # should also check if we also have Felix status for those hosts.
+        for hostname in self._endpoints_by_host.keys():
+            all_hosts_with_endpoint_status.add(hostname)
 
-            # Report any existing values.
-            for result in datamodel_v3.get_prefix(
-                    datamodel_v1.FELIX_STATUS_DIR):
-                key, value = result
-                # Convert to what the dispatcher expects - see below.
-                response = Response(
-                    action='set',
-                    key=key,
-                    value=value,
-                )
-                LOG.info("status event: %s", response)
-                self.dispatcher.handle_event(response)
-
-            # Collect hosts for each old endpoint status.  For each of those
-            # hosts we will check if we now have a Felix status.
-            all_hosts_with_endpoint_status = set()
-            for hostname in old_endpoints_by_host.keys():
-                all_hosts_with_endpoint_status.add(hostname)
-
-            # There might be new endpoint statuses with new hosts, for which we
-            # should also check if we also have Felix status for those hosts.
-            for hostname in self._endpoints_by_host.keys():
-                all_hosts_with_endpoint_status.add(hostname)
-
-            # For each of those hosts...
-            for hostname in all_hosts_with_endpoint_status:
-                LOG.info("host: %s", hostname)
-                if hostname not in self._hosts_with_live_felix:
-                    # Status for a Felix has disappeared in the new snapshot.
-                    # Signal port status None for both the endpoints that we
-                    # had for that Felix _before_ the snapshot, _and_ those
-                    # that we have in the new snapshot.
-                    LOG.info("has disappeared")
-                    for ep_id in (old_endpoints_by_host[hostname] |
-                                  self._endpoints_by_host[hostname]):
-                        LOG.info("signal None for %s", ep_id.endpoint)
-                        self.calico_driver.on_port_status_changed(
-                            hostname,
-                            ep_id.endpoint,
-                            None)
-                else:
-                    # Felix is still there, but we should check for particular
-                    # endpoints that have disappeared, and signal those.
-                    LOG.info("is still alive")
-                    for ep_id in (old_endpoints_by_host[hostname] -
-                                  self._endpoints_by_host[hostname]):
-                        LOG.info("signal None for %s", ep_id.endpoint)
-                        self.calico_driver.on_port_status_changed(
-                            hostname,
-                            ep_id.endpoint,
-                            None)
-
-            # Now watch for any changes, starting after the revision above.
-            while not self._stopped:
-                # Start a watch from just after the last known revision.
-                try:
-                    event_stream, cancel = \
-                        datamodel_v3.watch_subtree(
-                            datamodel_v1.FELIX_STATUS_DIR,
-                            str(last_revision + 1))
-                except Exception:
-                    # Log and handle by breaking out to the wider loop, which
-                    # means we'll get the tree again and then try watching
-                    # again.  E.g. it could be that the DB has just been
-                    # compacted and so the revision is no longer available that
-                    # we asked to start watching from.
-                    LOG.exception("Exception watching status tree")
-                    break
-
-                # Record time of last activity on the successfully created
-                # watch.  (This is updated below as we see watch events.)
-                last_event_time = monotonic_time()
-
-                def _cancel_watch_if_inactive():
-                    # Loop until we should cancel the watch, either because of
-                    # inactivity or because of stop() having been called.
-                    while not self._stopped:
-                        time_to_next_timeout = (last_event_time +
-                                                WATCH_TIMEOUT_SECS -
-                                                monotonic_time())
-                        LOG.debug("Time to next timeout is %ds",
-                                  time_to_next_timeout)
-                        if time_to_next_timeout < 1:
-                            break
-                        else:
-                            # Sleep until when we might next have to cancel
-                            # (but won't if a watch event has occurred in the
-                            # meantime).
-                            eventlet.sleep(time_to_next_timeout)
-
-                    # Cancel the watch
-                    cancel()
-                    return
-
-                # Spawn a greenlet to cancel the watch if it's inactive, or if
-                # stop() is called.  Cancelling the watch adds None to the
-                # event stream, so the following for loop will see that.
-                eventlet.spawn(_cancel_watch_if_inactive)
-
-                for event in event_stream:
-                    LOG.debug("status event: %s", event)
-                    last_event_time = monotonic_time()
-
-                    # If the StatusWatcher has been stopped, return from the
-                    # whole loop.
-                    if self._stopped:
-                        LOG.info("StatusWatcher has been stopped")
-                        return
-
-                    # Otherwise a None event means that the watch has been
-                    # cancelled owing to inactivity.  In that case we break out
-                    # from this loop, and the watch will be restarted.
-                    if event is None:
-                        LOG.debug("Watch cancelled owing to inactivity")
-                        break
-
-                    # Convert v3 event to form that the dispatcher expects;
-                    # namely an object response, with:
-                    # - response.key giving the etcd key
-                    # - response.action being "set" or "delete"
-                    # - whole response being passed on to the handler method.
-                    # Handler methods here expect
-                    # - response.key
-                    # - response.value
-                    response = Response(
-                        action=event.get('type', 'SET').lower(),
-                        key=event['kv']['key'],
-                        value=event['kv'].get('value', ''),
-                    )
-                    LOG.info("status event: %s", response)
-                    self.dispatcher.handle_event(response)
-
-                    # Update last known revision.
-                    mod_revision = int(event['kv'].get('mod_revision', '0'))
-                    if mod_revision > last_revision:
-                        last_revision = mod_revision
-                        LOG.info("Last known revision is now %d",
-                                 last_revision)
-
-    """
-    Example status events:
-
-    status event: {u'kv': {
-        u'mod_revision': u'4',
-        u'value': '{
-            "time":"2017-12-31T14:09:29Z",
-            "uptime":392.5231995,
-            "first_update":true
-        }',
-        u'create_revision': u'4',
-        u'version': u'1',
-        u'key': '/calico/felix/v1/host/ubuntu-xenial-rax-dfw-0001640133/status'
-    }}
-
-    status event: {u'type': u'DELETE',
-                   u'kv': {
-        u'mod_revision': u'88',
-        u'key': '/calico/felix/v1/host/ubuntu-xenial-rax-dfw-0001640133/' +
-                'workload/openstack/' +
-                'openstack%2f84a5e464-c2be-4bfd-926b-96030421999d/endpoint/' +
-                '84a5e464-c2be-4bfd-926b-96030421999d'
-    }}
-
-    status event: {u'kv': {
-        u'mod_revision': u'113',
-        u'value': '{"status":"down"}',
-        u'create_revision': u'113',
-        u'version': u'1',
-        u'key': '/calico/felix/v1/host/ubuntu-xenial-rax-dfw-0001640133/' +
-                'workload/openstack/' +
-                'openstack%2f8ae2181b-8aab-4b49-8242-346f6a0b21e5/endpoint/' +
-                '8ae2181b-8aab-4b49-8242-346f6a0b21e5'
-    }}
-    """
-
-    def stop(self):
-        LOG.info("Stop watching status tree")
-        self._stopped = True
+        # For each of those hosts...
+        for hostname in all_hosts_with_endpoint_status:
+            LOG.info("host: %s", hostname)
+            if hostname not in self._hosts_with_live_felix:
+                # Status for a Felix has disappeared in the new snapshot.
+                # Signal port status None for both the endpoints that we had
+                # for that Felix _before_ the snapshot, _and_ those that we
+                # have in the new snapshot.
+                LOG.info("has disappeared")
+                for ep_id in (old_endpoints_by_host[hostname] |
+                              self._endpoints_by_host[hostname]):
+                    LOG.info("signal None for %s", ep_id.endpoint)
+                    self.calico_driver.on_port_status_changed(
+                        hostname,
+                        ep_id.endpoint,
+                        None)
+            else:
+                # Felix is still there, but we should check for particular
+                # endpoints that have disappeared, and signal those.
+                LOG.info("is still alive")
+                for ep_id in (old_endpoints_by_host[hostname] -
+                              self._endpoints_by_host[hostname]):
+                    LOG.info("signal None for %s", ep_id.endpoint)
+                    self.calico_driver.on_port_status_changed(
+                        hostname,
+                        ep_id.endpoint,
+                        None)
 
     def _on_status_set(self, response, hostname):
         """Called when a felix uptime report is inserted/updated."""
