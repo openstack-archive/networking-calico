@@ -37,7 +37,8 @@ ANN_KEY_FQDN = ANN_KEY_PREFIX + 'fqdn'
 LOG = log.getLogger(__name__)
 
 
-def put(resource_kind, name, spec, annotations={}, mod_revision=None):
+def put(resource_kind, name, spec, annotations={}, labels=None,
+        mod_revision=None):
     """Write a Calico v3 resource to etcdv3.
 
     - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
@@ -87,11 +88,17 @@ def put(resource_kind, name, spec, annotations={}, mod_revision=None):
     # Ensure that there is a UID.
     if 'uid' not in value['metadata']:
         value['metadata']['uid'] = uuid.uuid4().get_hex()
-    # Merge any annotations that have been specified.
+    # Set annotations and labels if specified.  (We previously used to merge
+    # here, instead of overwriting, but (a) for annotations there is actually
+    # no use case for that, because we only use annotations on endpoints for
+    # which Neutron is the sole source of truth; and (b) for the use case where
+    # labels are used to represent security group membership it is crucial that
+    # we overwrite and don't merge; otherwise a VM could never be removed from
+    # a security group.)
     if annotations:
-        existing = value['metadata'].get('annotations', {})
-        existing.update(annotations)
-        value['metadata']['annotations'] = existing
+        value['metadata']['annotations'] = annotations
+    if labels:
+        value['metadata']['labels'] = labels
     # Set the new spec (overriding whatever may already be there).
     value['spec'] = spec
     return etcdv3.put(key, json.dumps(value), mod_revision=mod_revision)
@@ -125,8 +132,12 @@ def get_all(resource_kind, with_labels_and_annotations=False):
 
     - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
 
-    Returns a list of tuples (name, spec, mod_revision), one for each resource
-    of the specified kind, in which:
+    - with_labels_and_annotations: If True, indicates to return the labels and
+      annotations for each resource as well as the spec.
+
+    Returns a list of tuples (name, spec, mod_revision) or (name, (spec,
+    labels, annotations), mod_revision), one for each resource of the specified
+    kind, in which:
 
     - name is the resource's name (a string)
 
@@ -134,6 +145,10 @@ def get_all(resource_kind, with_labels_and_annotations=False):
       relevant golang struct definition (for example,
       https://github.com/projectcalico/libcalico-go/blob/master/
       lib/apis/v3/workloadendpoint.go#L38).
+
+    - labels is a dict containing the resource's labels
+
+    - annotations is a dict containing the resource's annotations
 
     - mod_revision is the revision at which that resource was last modified (an
       integer represented as a string).
@@ -170,7 +185,7 @@ def get_all(resource_kind, with_labels_and_annotations=False):
     return tuples
 
 
-def delete(resource_kind, name):
+def delete(resource_kind, name, mod_revision=None):
     """Delete a Calico v3 resource from etcdv3.
 
     - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
@@ -180,7 +195,7 @@ def delete(resource_kind, name):
     Returns True if the deletion was successful; False if not.
     """
     key = _build_key(resource_kind, name)
-    return etcdv3.delete(key)
+    return etcdv3.delete(key, mod_revision=mod_revision)
 
 
 def _is_namespaced(resource_kind):
