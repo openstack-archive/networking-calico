@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
+
 from etcd3gw.client import Etcd3Client
 from etcd3gw.exceptions import Etcd3Exception
 from etcd3gw.utils import _encode
@@ -285,6 +287,18 @@ def get_lease(ttl):
     """Get a lease for the specified TTL."""
     client = _get_client()
     return client.lease(ttl=ttl)
+
+
+def logging_exceptions(fn):
+    """Decorator to log (and reraise) Etcd3Exceptions."""
+    @functools.wraps(fn)
+    def wrapped(self, *args, **kwargs):
+        try:
+            return fn(self, *args, **kwargs)
+        except Etcd3Exception as e:
+            LOG.warning("Etcd3Exception, re-raising: %r", e)
+            raise
+    return wrapped
 
 
 # Internals.

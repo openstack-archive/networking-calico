@@ -169,8 +169,7 @@ m_neutron.plugins.ml2.drivers.mech_agent.SimpleAgentMechanismDriverBase = \
 # Replace the elector.
 
 import networking_calico.plugins.ml2.drivers.calico.mech_calico as mech_calico
-import networking_calico.plugins.ml2.drivers.calico.t_etcd as t_etcd
-t_etcd.Elector = GrandDukeOfSalzburg
+mech_calico.Elector = GrandDukeOfSalzburg
 
 REAL_EVENTLET_SLEEP_TIME = 0.01
 
@@ -389,9 +388,6 @@ class Lib(object):
         import logging
         mech_calico.LOG = logging.getLogger(
             'networking_calico.plugins.ml2.drivers.calico.mech_calico'
-        )
-        t_etcd.LOG = logging.getLogger(
-            'networking_calico.plugins.ml2.drivers.calico.t_etcd'
         )
 
     # Tear down after each test case.
