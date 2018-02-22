@@ -158,7 +158,7 @@ def get_all(resource_kind):
     return tuples
 
 
-def delete(resource_kind, name):
+def delete(resource_kind, name, mod_revision=None):
     """Delete a Calico v3 resource from etcdv3.
 
     - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
@@ -168,7 +168,7 @@ def delete(resource_kind, name):
     Returns True if the deletion was successful; False if not.
     """
     key = _build_key(resource_kind, name)
-    return etcdv3.delete(key)
+    return etcdv3.delete(key, mod_revision=mod_revision)
 
 
 def _is_namespaced(resource_kind):

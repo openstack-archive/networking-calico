@@ -34,7 +34,8 @@ from networking_calico import datamodel_v1
 from networking_calico import etcdv3
 from networking_calico.monotonic import monotonic_time
 from networking_calico.plugins.ml2.drivers.calico import mech_calico
-from networking_calico.plugins.ml2.drivers.calico import t_etcd
+from networking_calico.plugins.ml2.drivers.calico import profiles
+from networking_calico.plugins.ml2.drivers.calico import status
 
 _log = logging.getLogger(__name__)
 logging.getLogger().addHandler(logging.NullHandler())
@@ -994,35 +995,19 @@ class TestPluginEtcd(_TestEtcdBase):
         """Test that a driver that is not master does not resync."""
         # Initialize the state early to put the elector in place, then override
         # it to claim that the driver is not master.
-        self.driver._init_state()
-        self.driver.transport.elector.master = lambda *args: False
+        self.driver._post_fork_init()
 
-        # Allow the etcd transport's resync thread to run. Nothing will happen.
-        self.give_way()
-        self.simulated_time_advance(31)
-        self.assertEtcdWrites({})
+        with mock.patch.object(self.driver, "elector") as m_elector:
+            m_elector.master.return_value = False
 
-    def test_not_master_does_not_poll(self):
-        """Test that a driver that is not master does not poll.
-
-        Master would read through etcd db and handle updates
-        """
-        # Initialize the state early to put the elector in place, then override
-        # it to claim that the driver is not master.
-        self.driver._init_state()
-        self.driver.transport.elector.master = lambda *args: False
-
-        self.driver._register_initial_felixes = mock.Mock()
-        self.driver._handle_status_update = mock.Mock()
-
-        # Allow the etcd transport's resync thread to run. Nothing will happen.
-        self.give_way()
-        self.simulated_time_advance(31)
-        self.assertFalse(self.driver._register_initial_felixes.called)
-        self.assertFalse(self.driver._handle_status_update.called)
+            # Allow the etcd transport's resync thread to run. Nothing will
+            # happen.
+            self.give_way()
+            self.simulated_time_advance(31)
+            self.assertEtcdWrites({})
 
     def assertNeutronToEtcd(self, neutron_rule, exp_etcd_rule):
-        etcd_rule = t_etcd._neutron_rule_to_etcd_rule(neutron_rule)
+        etcd_rule = profiles._neutron_rule_to_etcd_rule(neutron_rule)
         self.assertEqual(exp_etcd_rule, etcd_rule)
 
     def test_profile_prefixing(self):
@@ -1104,7 +1089,6 @@ class TestDriverStatusReporting(lib.Lib, unittest.TestCase):
     """Tests of the driver's status reporting function."""
     def setUp(self):
         super(TestDriverStatusReporting, self).setUp()
-        self.driver.transport = mock.Mock(spec=t_etcd.CalicoTransportEtcd)
 
         # Mock out config.
         lib.m_compat.cfg.CONF.calico.etcd_host = "localhost"
@@ -1135,29 +1119,32 @@ class TestDriverStatusReporting(lib.Lib, unittest.TestCase):
         self.driver._epoch = 2
         self.driver._status_updating_thread(1)
 
-    @mock.patch("networking_calico.plugins.ml2.drivers.calico.t_etcd."
+    @mock.patch("networking_calico.plugins.ml2.drivers.calico.mech_calico."
                 "StatusWatcher",
                 autospec=True)
     def test_status_thread_mainline(self, m_StatusWatcher):
-        self.driver.transport.is_master = True
         count = [0]
 
-        def maybe_end_loop(*args, **kwargs):
-            if count[0] == 2:
-                # Thread dies, should be restarted.
-                self.driver._etcd_watcher_thread = False
-            if count[0] == 4:
-                # After a few loops, stop being the master...
-                self.driver.transport.is_master = False
-            if count[0] > 6:
-                # Then terminate the loop after a few more...
-                self.driver._epoch += 1
-            count[0] += 1
+        with mock.patch.object(self.driver, "elector") as m_elector:
+            m_elector.master.return_value = True
 
-        with mock.patch("eventlet.spawn") as m_spawn:
-            with mock.patch("eventlet.sleep") as m_sleep:
-                m_sleep.side_effect = maybe_end_loop
-                self.driver._status_updating_thread(0)
+            def maybe_end_loop(*args, **kwargs):
+                if count[0] == 2:
+                    # Thread dies, should be restarted.
+                    self.driver._etcd_watcher_thread = False
+                if count[0] == 4:
+                    # After a few loops, stop being the master...
+                    m_elector.master.return_value = False
+                if count[0] > 6:
+                    # Then terminate the loop after a few more...
+                    self.driver._epoch += 1
+                count[0] += 1
+
+            with mock.patch("eventlet.spawn") as m_spawn:
+                with mock.patch("eventlet.sleep") as m_sleep:
+                    m_sleep.side_effect = maybe_end_loop
+                    self.driver._status_updating_thread(0)
+
         m_watcher = m_StatusWatcher.return_value
         self.assertEqual(
             [
@@ -1313,13 +1300,13 @@ class TestStatusWatcher(_TestEtcdBase):
         lib.m_compat.cfg.CONF.calico.etcd_ca_cert_file = None
         super(TestStatusWatcher, self).setUp()
         self.driver = mock.Mock(spec=mech_calico.CalicoMechanismDriver)
-        self.watcher = t_etcd.StatusWatcher(self.driver)
+        self.watcher = status.StatusWatcher(self.driver)
 
     def test_tls(self):
         lib.m_compat.cfg.CONF.calico.etcd_cert_file = "cert-file"
         lib.m_compat.cfg.CONF.calico.etcd_ca_cert_file = "ca-cert-file"
         lib.m_compat.cfg.CONF.calico.etcd_key_file = "key-file"
-        self.watcher = t_etcd.StatusWatcher(self.driver)
+        self.watcher = status.StatusWatcher(self.driver)
 
     def test_snapshot(self):
         # Populate initial status tree data, for initial snapshot testing.
