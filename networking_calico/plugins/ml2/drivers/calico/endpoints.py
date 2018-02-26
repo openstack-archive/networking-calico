@@ -23,22 +23,59 @@ except ImportError:
 from networking_calico.compat import log
 from networking_calico.compat import n_exc
 from networking_calico import datamodel_v3
-from networking_calico.plugins.ml2.drivers.calico.profiles import \
+from networking_calico.plugins.ml2.drivers.calico.policy import \
     with_openstack_sg_prefix
 from networking_calico.plugins.ml2.drivers.calico.syncer import ResourceGone
-from networking_calico.plugins.ml2.drivers.calico.v3 import V3ResourceSyncer
+from networking_calico.plugins.ml2.drivers.calico.syncer import ResourceSyncer
 
 
 LOG = log.getLogger(__name__)
 
 
-class WorkloadEndpointSyncer(V3ResourceSyncer):
+class WorkloadEndpointSyncer(ResourceSyncer):
 
     def __init__(self, db, txn_from_context, profile_syncer):
         super(WorkloadEndpointSyncer, self).__init__(db,
                                                      txn_from_context,
                                                      "WorkloadEndpoint")
         self.profile_syncer = profile_syncer
+
+    # The following methods differ from those for other resources because for
+    # endpoints we need to read, compare and write labels and annotations as
+    # well as spec.
+
+    def get_all_from_etcd(self):
+        return datamodel_v3.get_all(self.resource_kind,
+                                    with_labels_and_annotations=True)
+
+    def etcd_write_data_matches_existing(self, write_data, existing):
+        rspec, rlabels, rannotations = existing
+        wspec, wlabels, wannotations = write_data
+        return (rspec == wspec and
+                rlabels == wlabels and
+                rannotations == wannotations)
+
+    def create_in_etcd(self, name, write_data):
+        spec, labels, annotations = write_data
+        return datamodel_v3.put(self.resource_kind,
+                                name,
+                                spec,
+                                labels=labels,
+                                annotations=annotations,
+                                mod_revision=0)
+
+    def update_in_etcd(self, name, write_data, mod_revision=None):
+        spec, labels, annotations = write_data
+        return datamodel_v3.put(self.resource_kind,
+                                name,
+                                spec,
+                                labels=labels,
+                                annotations=annotations,
+                                mod_revision=mod_revision)
+
+    def delete_from_etcd(self, name, mod_revision):
+        return datamodel_v3.delete(self.resource_kind, name,
+                                   mod_revision=mod_revision)
 
     def get_all_from_neutron(self, context):
         # TODO(lukasa): We could reduce the amount of data we load from Neutron
@@ -54,30 +91,9 @@ class WorkloadEndpointSyncer(V3ResourceSyncer):
             except n_exc.PortNotFound:
                 raise ResourceGone()
         port = self.add_extra_port_information(context, port)
-        return (endpoint_spec(port), endpoint_annotations(port))
-
-    # Specialize base implementation of the following methods to allow for
-    # write_data containing both spec and annotations.
-
-    def etcd_write_data_matches_existing(self, write_data, existing):
-        spec, annotations = write_data
-        return spec == existing
-
-    def create_in_etcd(self, name, write_data):
-        spec, annotations = write_data
-        return datamodel_v3.put(self.resource_kind,
-                                name,
-                                spec,
-                                annotations=annotations,
-                                mod_revision=0)
-
-    def update_in_etcd(self, name, write_data, mod_revision=None):
-        spec, annotations = write_data
-        return datamodel_v3.put(self.resource_kind,
-                                name,
-                                spec,
-                                annotations=annotations,
-                                mod_revision=mod_revision)
+        return (endpoint_spec(port),
+                endpoint_labels(port),
+                endpoint_annotations(port))
 
     def write_endpoint(self, port, context):
         # Reread the current port. This protects against concurrent writes
@@ -98,6 +114,7 @@ class WorkloadEndpointSyncer(V3ResourceSyncer):
         datamodel_v3.put("WorkloadEndpoint",
                          endpoint_name(port),
                          endpoint_spec(port),
+                         labels=endpoint_labels(port),
                          annotations=endpoint_annotations(port))
 
     def delete_endpoint(self, port):
@@ -191,6 +208,11 @@ def endpoint_name(port):
     )
 
 
+def endpoint_labels(port):
+    return dict((with_openstack_sg_prefix(sg_id), '')
+                for sg_id in port['security_groups'])
+
+
 # Represent a Neutron port as a Calico v3 WorkloadEndpoint spec.
 def endpoint_spec(port):
     """endpoint_spec
@@ -206,8 +228,6 @@ def endpoint_spec(port):
         'endpoint': port['id'],
         'interfaceName': port['interface_name'],
         'mac': port['mac_address'],
-        'profiles': [with_openstack_sg_prefix(sg_id)
-                     for sg_id in port['security_groups']]
     }
     # TODO(MD4) Check the old version writes 'profile_id' in a form
     # that translation code in common.validate_endpoint() will work.
