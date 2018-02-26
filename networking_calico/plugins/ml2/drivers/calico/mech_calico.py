@@ -68,7 +68,7 @@ from networking_calico.plugins.ml2.drivers.calico.endpoints import \
     _port_is_endpoint_port
 from networking_calico.plugins.ml2.drivers.calico.endpoints import \
     WorkloadEndpointSyncer
-from networking_calico.plugins.ml2.drivers.calico.profiles import ProfileSyncer
+from networking_calico.plugins.ml2.drivers.calico.policy import PolicySyncer
 from networking_calico.plugins.ml2.drivers.calico.status import StatusWatcher
 from networking_calico.plugins.ml2.drivers.calico.subnets import SubnetSyncer
 
@@ -238,7 +238,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             self.subnet_syncer = \
                 SubnetSyncer(self.db, self._txn_from_context)
             self.profile_syncer = \
-                ProfileSyncer(self.db, self._txn_from_context)
+                PolicySyncer(self.db, self._txn_from_context)
             self.endpoint_syncer = \
                 WorkloadEndpointSyncer(self.db,
                                        self._txn_from_context,
