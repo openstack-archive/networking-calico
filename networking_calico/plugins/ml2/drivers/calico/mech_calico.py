@@ -68,7 +68,7 @@ from networking_calico.plugins.ml2.drivers.calico.endpoints import \
     _port_is_endpoint_port
 from networking_calico.plugins.ml2.drivers.calico.endpoints import \
     WorkloadEndpointSyncer
-from networking_calico.plugins.ml2.drivers.calico.profiles import ProfileSyncer
+from networking_calico.plugins.ml2.drivers.calico.policy import PolicySyncer
 from networking_calico.plugins.ml2.drivers.calico.status import StatusWatcher
 from networking_calico.plugins.ml2.drivers.calico.subnets import SubnetSyncer
 
@@ -197,6 +197,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
         # Make sure we initialise even if we don't see any API calls.
         eventlet.spawn_after(STARTUP_DELAY_SECS, self._post_fork_init)
+        LOG.info("Created Calico mechanism driver %s", self)
 
     @logging_exceptions(LOG)
     def _post_fork_init(self):
@@ -211,11 +212,19 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         the fork (as would happen in __init__()) then the workers
         would share sockets incorrectly.
         """
+        # The self._init_lock semaphore mediates if two or more eventlet
+        # threads call _post_fork_init at the same time, within the same
+        # Neutron server fork.  This can happen if the timed initialization
+        # (after STARTUP_DELAY_SECS) coincides with the handling of a Neutron
+        # API request, or if this fork processes multiple Neutron API requests
+        # at the same time.
         with self._init_lock:
             current_pid = os.getpid()
             if self._my_pid == current_pid:
                 # We've initialised our PID and it hasn't changed since last
                 # time, nothing to do.
+                LOG.info("Calico state already initialised for PID %s",
+                         current_pid)
                 return
             # else: either this is the first call or our PID has changed:
             # (re)initialise.
@@ -238,7 +247,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             self.subnet_syncer = \
                 SubnetSyncer(self.db, self._txn_from_context)
             self.profile_syncer = \
-                ProfileSyncer(self.db, self._txn_from_context)
+                PolicySyncer(self.db, self._txn_from_context)
             self.endpoint_syncer = \
                 WorkloadEndpointSyncer(self.db,
                                        self._txn_from_context,
