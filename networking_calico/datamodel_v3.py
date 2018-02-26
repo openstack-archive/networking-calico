@@ -37,7 +37,8 @@ ANN_KEY_FQDN = ANN_KEY_PREFIX + 'fqdn'
 LOG = log.getLogger(__name__)
 
 
-def put(resource_kind, name, spec, annotations={}, mod_revision=None):
+def put(resource_kind, name, spec, annotations={}, labels=None,
+        mod_revision=None):
     """Write a Calico v3 resource to etcdv3.
 
     - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
@@ -88,11 +89,17 @@ def put(resource_kind, name, spec, annotations={}, mod_revision=None):
     # Ensure that there is a UID.
     if 'uid' not in value['metadata']:
         value['metadata']['uid'] = uuid.uuid4().get_hex()
-    # Merge any annotations that have been specified.
+    # Set annotations and labels if specified.  (We previously used to merge
+    # here, instead of overwriting, but (a) for annotations there is actually
+    # no use case for that, because we only use annotations on endpoints for
+    # which Neutron is the sole source of truth; and (b) for the use case where
+    # labels are used to represent security group membership it is crucial that
+    # we overwrite and don't merge; otherwise a VM could never be removed from
+    # a security group.)
     if annotations:
-        existing = value['metadata'].get('annotations', {})
-        existing.update(annotations)
-        value['metadata']['annotations'] = existing
+        value['metadata']['annotations'] = annotations
+    if labels:
+        value['metadata']['labels'] = labels
     # Set the new spec (overriding whatever may already be there).
     value['spec'] = spec
     return etcdv3.put(key, json.dumps(value), mod_revision=mod_revision)
@@ -121,13 +128,17 @@ def get(resource_kind, name):
     return value['spec'], mod_revision
 
 
-def get_all(resource_kind):
+def get_all(resource_kind, with_labels_and_annotations=False):
     """Read all Calico v3 resources of a certain kind from etcdv3.
 
     - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
 
-    Returns a list of tuples (name, spec, mod_revision), one for each resource
-    of the specified kind, in which:
+    - with_labels_and_annotations: If True, indicates to return the labels and
+      annotations for each resource as well as the spec.
+
+    Returns a list of tuples (name, spec, mod_revision) or (name, (spec,
+    labels, annotations), mod_revision), one for each resource of the specified
+    kind, in which:
 
     - name is the resource's name (a string)
 
@@ -136,8 +147,13 @@ def get_all(resource_kind):
       https://github.com/projectcalico/libcalico-go/blob/master/
       lib/apis/v3/workloadendpoint.go#L38).
 
+    - labels is a dict containing the resource's labels
+
+    - annotations is a dict containing the resource's annotations
+
     - mod_revision is the revision at which that resource was last modified (an
       integer represented as a string).
+
     """
     prefix = _build_key(resource_kind, '')
     results = etcdv3.get_prefix(prefix)
@@ -147,11 +163,22 @@ def get_all(resource_kind):
         try:
             value_dict = json.loads(value)
             LOG.debug("value dict: %s", value_dict)
-            tuple = (
-                value_dict['metadata']['name'],
-                value_dict['spec'],
-                mod_revision
-            )
+            if with_labels_and_annotations:
+                tuple = (
+                    value_dict['metadata']['name'],
+                    (
+                        value_dict['spec'],
+                        value_dict['metadata'].get('labels', {}),
+                        value_dict['metadata'].get('annotations', {})
+                    ),
+                    mod_revision
+                )
+            else:
+                tuple = (
+                    value_dict['metadata']['name'],
+                    value_dict['spec'],
+                    mod_revision
+                )
             tuples.append(tuple)
         except ValueError:
             LOG.warning("etcd value not valid JSON, so ignoring (%s)", value)

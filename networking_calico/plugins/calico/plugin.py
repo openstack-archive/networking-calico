@@ -41,6 +41,7 @@ class CalicoPlugin(Ml2Plugin, l3_db.L3_NAT_db_mixin):
     # Intercept floating IP associates/disassociates so we can trigger an
     # appropriate endpoint update.
     def _update_floatingip(self, context, id, floatingip):
+        LOG.info("CalicoPlugin _update_floatingip: %s", floatingip)
         old_floatingip, new_floatingip = super(
             CalicoPlugin, self)._update_floatingip(context, id, floatingip)
 
@@ -57,6 +58,7 @@ class CalicoPlugin(Ml2Plugin, l3_db.L3_NAT_db_mixin):
 
     def create_floatingip(self, context, floatingip,
                           initial_status=constants.FLOATINGIP_STATUS_ACTIVE):
+        LOG.info("CalicoPlugin create_floatingip: %s", floatingip)
         new_floatingip = super(CalicoPlugin, self).create_floatingip(
             context,
             floatingip,
