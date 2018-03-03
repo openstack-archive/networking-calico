@@ -2,8 +2,8 @@
 Team and repository tags
 ========================
 
-.. image:: http://governance.openstack.org/badges/networking-calico.svg
-    :target: http://governance.openstack.org/reference/tags/index.html
+.. image:: https://governance.openstack.org/tc/badges/networking-calico.svg
+    :target: https://governance.openstack.org/tc/reference/tags/index.html
 
 .. Change things from this point on
 
@@ -22,6 +22,6 @@ Calico/OpenStack installation, and how to use various OpenStack/Neutron
 features with Calico, please see http://docs.projectcalico.org/master.
 
 * Free software: Apache license
-* Documentation: http://docs.projectcalico.org/master
-* Source: http://git.openstack.org/cgit/openstack/networking-calico
-* Bugs: http://bugs.launchpad.net/networking-calico
+* Documentation: https://docs.projectcalico.org/master
+* Source: https://git.openstack.org/cgit/openstack/networking-calico
+* Bugs: https://bugs.launchpad.net/networking-calico
