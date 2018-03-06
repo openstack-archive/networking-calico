@@ -1074,6 +1074,20 @@ def check_request_etcd_compaction():
             LOG.info("Time to request compaction")
             _, current_revision = etcdv3.get_status()
             LOG.info("Current etcd revision is %r", current_revision)
+
+            # Request compaction at that revision.
+            etcdv3.request_compaction(current_revision)
+
+            # Write the compaction key, with TTL such that it will disappear
+            # again after etcd_compaction_period_mins.
+            lease = etcdv3.get_lease(
+                cfg.CONF.calico.etcd_compaction_period_mins * 60
+            )
+            if not etcdv3.put(COMPACTION_KEY, str(self._my_pid), lease=lease):
+                # Writing should always succeed; but in case it doesn't we
+                # will retry as part of the next resync, so just a warning
+                # is sufficient here.
+                LOG.warning("Failed to write %s", COMPACTION_KEY)
     except Exception:
         # Something wrong with etcd connectivity; clearly then we can't do any
         # compaction.  Just log, and we'll try again on the next resync.
