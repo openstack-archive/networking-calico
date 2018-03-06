@@ -74,6 +74,7 @@ class Elector(object):
         self._interval = int(interval)
         self._ttl = int(ttl)
         self._stopped = False
+        self.resync_exception = None
 
         if self._interval <= 0:
             raise ValueError("Interval %r is <= 0" % interval)
@@ -244,6 +245,9 @@ class Elector(object):
         try:
             while not self._stopped:
                 try:
+                    if self.resync_exception is not None:
+                        LOG.warning("resync_exception: %r",
+                                    self.resync_exception)
                     LOG.debug("Refreshing master role")
                     # Refresh the lease.
                     ttl = ttl_lease.refresh()
