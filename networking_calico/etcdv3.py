@@ -24,8 +24,6 @@ from networking_calico.compat import log
 
 
 LOG = log.getLogger(__name__)
-import logging
-logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 
 class KeyNotFound(Etcd3Exception):
@@ -265,6 +263,15 @@ def get_status():
     return status['header']['cluster_id'], status['header']['revision']
 
 
+def request_compaction(revision):
+    """Request compaction at the specified revision."""
+    client = _get_client()
+    LOG.debug("request etcdv3 compaction at %r", revision)
+    response = client.post(client.get_url("/kv/compaction"),
+                           json={"revision": str(revision)})
+    LOG.debug("=> %s", response)
+
+
 def watch_once(key, timeout=None, **kwargs):
     """Watch a key and stop after the first event.
 
@@ -277,7 +284,7 @@ def watch_once(key, timeout=None, **kwargs):
 
 
 def get_lease(ttl):
-    """Get a lease for the specified TTL."""
+    """Get a lease for the specified TTL (in seconds)."""
     client = _get_client()
     return client.lease(ttl=ttl)
 

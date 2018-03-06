@@ -16,15 +16,15 @@ import collections
 import eventlet
 import functools
 import json
-import logging
 import re
 from types import StringTypes
 
 from etcd3gw.exceptions import ConnectionFailedError
+from networking_calico.compat import log
 from networking_calico import etcdv3
 from networking_calico.monotonic import monotonic_time
 
-_log = logging.getLogger(__name__)
+_log = log.getLogger(__name__)
 
 # Map etcd event actions to the effects we care about.
 ACTION_MAPPING = {

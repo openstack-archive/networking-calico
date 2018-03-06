@@ -104,6 +104,13 @@ EOF
 		    # at the etcd server.
 		    iniset $NEUTRON_CONF calico etcd_host $SERVICE_HOST
 		    iniset $NEUTRON_CONF calico etcd_port $ETCD_PORT
+
+		    # If CALICO_ETCD_COMPACTION_PERIOD_MINS is
+		    # defined, set that as the value of the
+		    # etcd_compaction_period_mins setting.
+		    if test -n "$CALICO_ETCD_COMPACTION_PERIOD_MINS"; then
+			iniset $NEUTRON_CONF calico etcd_compaction_period_mins $CALICO_ETCD_COMPACTION_PERIOD_MINS
+		    fi
 		    ;;
 
 		extra)
