@@ -28,7 +28,7 @@ import sys
 # When you're working on a test and need to see logging - both from the test
 # code and the code _under_ test - uncomment the following line.
 #
-# logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
 
 _log = logging.getLogger(__name__)
 
