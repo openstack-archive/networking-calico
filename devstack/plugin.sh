@@ -53,7 +53,7 @@ EtcdEndpoints = http://${SERVICE_HOST}:${ETCD_PORT}
 EOF
 		    if [ "${ENABLE_DEBUG_LOG_LEVEL}" = True ]; then
 			sudo sh -c "cat >> /etc/calico/felix.cfg" << EOF
-LogSeverityFile = debug
+LogSeverityFile = info
 EOF
 		    fi
 		    install_package calico-felix
