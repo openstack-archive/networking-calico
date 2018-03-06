@@ -25,6 +25,7 @@
 #
 # It is implemented as a Neutron/ML2 mechanism driver.
 import contextlib
+from etcd3gw.exceptions import Etcd3Exception
 from functools import wraps
 import inspect
 import os
@@ -78,6 +79,12 @@ calico_opts = [
     cfg.IntOpt('num_port_status_threads', default=4,
                help="Number of threads to use for writing port status "
                     "updates to the database."),
+    cfg.IntOpt('etcd_compaction_period_mins', default=60,
+               help="Interval in minutes between periodic etcd compactions. "
+                    "A setting of 0 tells this Calico driver not to request "
+                    "any etcd compaction; in that case the deployment must "
+                    "take its own steps to prevent the etcd database from "
+                    "growing without any bound."),
 ]
 cfg.CONF.register_opts(calico_opts, 'calico')
 
@@ -785,6 +792,67 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             LOG.info("Port disabled, attempting delete if needed.")
             self.endpoint_syncer.delete_endpoint(port)
 
+    def check_request_etcd_compaction(self):
+        """Possibly request an etcd compaction.
+
+        Without any compaction, etcd's memory usage will grow without bound
+        because of it retaining previous revisions for all known keys.
+        Compaction, at a particular revision, tells etcd to forget the detailed
+        information for all revisions before that, and so keeps etcd memory
+        usage in check.
+
+        By default, therefore, networking-calico requests an etcd compaction
+        every 60 minutes.  This period is controlled by the
+        etcd_compaction_period_mins config setting, and requesting compaction
+        can be disabled by setting that to 0.
+
+        We piggyback on the master election infrastructure so that only one
+        thread of the Neutron server requests compaction, each time that it
+        becomes due.  To avoid complexity with tracking when that is, combined
+        with possible changes of master status, we use a dedicated key in the
+        etcd database with TTL set to etcd_compaction_period_mins.  Then the
+        algorithm is simple:
+
+            if I am the master, and the compaction key does not exist:
+                request a compaction
+                write the compaction key, with TTL
+        """
+        # If period compaction is disabled, do nothing here.
+        if cfg.CONF.calico.etcd_compaction_period_mins == 0:
+            return
+
+        COMPACTION_KEY = "/calico/recently-compacted"
+
+        try:
+            try:
+                # Try to read the compaction key.
+                etcdv3.get(COMPACTION_KEY)
+            except etcdv3.KeyNotFound:
+                # Key does not exist.  That means that compaction is needed
+                # now.  Get the current revision.
+                _, current_revision = etcdv3.get_status()
+
+                # Request compaction at that revision.
+                etcdv3.request_compaction(current_revision)
+
+                # Write the compaction key, with TTL such that it will
+                # disappear again after etcd_compaction_period_mins.
+                lease = etcdv3.get_lease(
+                    cfg.CONF.calico.etcd_compaction_period_mins * 60
+                )
+                if not etcdv3.put(COMPACTION_KEY,
+                                  str(self._my_pid),
+                                  lease=lease):
+                    # Writing should always succeed; but in case it doesn't we
+                    # will retry as part of the next resync, so just a warning
+                    # is sufficient here.
+                    LOG.warning("Failed to write %s", COMPACTION_KEY)
+        except Etcd3Exception:
+            # Something wrong with etcd connectivity; clearly then we can't do
+            # any compaction.  Just log, and we'll try again on the next
+            # resync.
+            LOG.exception("Failed to check/request compaction")
+
     def periodic_resync_thread(self, expected_epoch):
         """Periodic Neutron DB -> etcd resynchronization logic.
 
@@ -819,6 +887,9 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
                         # Resync ClusterInformation and FelixConfiguration.
                         self.provide_felix_config()
+
+                        # Possibly request an etcd compaction.
+                        self.check_request_etcd_compaction()
                     except Exception:
                         LOG.exception("Error in periodic resync thread.")
                     # Reschedule ourselves.
