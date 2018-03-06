@@ -78,6 +78,12 @@ calico_opts = [
     cfg.IntOpt('num_port_status_threads', default=4,
                help="Number of threads to use for writing port status "
                     "updates to the database."),
+    cfg.IntOpt('etcd_compaction_period_mins', default=60,
+               help="Interval in minutes between periodic etcd compactions. "
+                    "A setting of 0 tells this Calico driver not to request "
+                    "any etcd compaction; in that case the deployment must "
+                    "take its own steps to prevent the etcd database from "
+                    "growing without any bound."),
 ]
 cfg.CONF.register_opts(calico_opts, 'calico')
 
@@ -827,6 +833,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                     # Shorter sleep interval before we check if we've become
                     # the master.  Avoids waiting a whole RESYNC_INTERVAL_SECS
                     # if we just miss the master update.
+                    LOG.debug("I am not master")
                     eventlet.sleep(MASTER_CHECK_INTERVAL_SECS)
         except Exception:
             # TODO(nj) Should we tear down the process.
