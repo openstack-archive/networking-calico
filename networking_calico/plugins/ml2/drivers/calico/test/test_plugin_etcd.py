@@ -291,11 +291,14 @@ class TestPluginEtcd(_TestEtcdBase):
 
     sg_default_key_v3 = (
         '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-        'openstack/sg-SGID-default')
+        'openstack/ossg.default.SGID-default')
     sg_default_value_v3 = {
         'apiVersion': 'projectcalico.org/v3',
         'kind': 'NetworkPolicy',
-        'metadata': {'namespace': 'openstack', 'name': 'sg-SGID-default'},
+        'metadata': {
+            'namespace': 'openstack',
+            'name': 'ossg.default.SGID-default'
+        },
         'spec': {'egress': [{'action': 'Allow',
                              'ipVersion': 4},
                             {'action': 'Allow',
@@ -642,11 +645,14 @@ class TestPluginEtcd(_TestEtcdBase):
 
         sg_1_key_v3 = (
             '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-            'openstack/sg-SG-1')
+            'openstack/ossg.default.SG-1')
         sg_1_value_v3 = {
             'apiVersion': 'projectcalico.org/v3',
             'kind': 'NetworkPolicy',
-            'metadata': {'namespace': 'openstack', 'name': 'sg-SG-1'},
+            'metadata': {
+                'namespace': 'openstack',
+                'name': 'ossg.default.SG-1'
+            },
             'spec': {'egress': [],
                      'ingress': [{
                          'action': 'Allow',
@@ -1107,11 +1113,11 @@ class TestPluginEtcd(_TestEtcdBase):
                 'spec': {'selector': 'has(ossg.SGID-default)'}}
             ),
             '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-            'openstack/sg-SOME_OLD_SG': json.dumps({
+            'openstack/ossg.default.SOME_OLD_SG': json.dumps({
                 'apiVersion': 'projectcalico.org/v3',
                 'kind': 'NetworkPolicy',
                 'metadata': {
-                    'name': 'sg-SOME_OLD_SG',
+                    'name': 'ossg.default.SOME_OLD_SG',
                     'namespace': 'openstack',
                 },
                 'spec': {'selector': 'has(ossg.SOME_OLD_SG)'}}
@@ -1127,10 +1133,11 @@ class TestPluginEtcd(_TestEtcdBase):
             'default']['spec']['clusterGUID'] = 'uuid-profile-prefixing'
         self.assertEtcdWrites(expected_writes)
 
-        # We should clean up the old 'sg-' policy, but not the customer one.
+        # We should clean up the old 'ossg.default.' policy, but not the
+        # customer one.
         self.assertEtcdDeletes(set([
             '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-            'openstack/sg-SOME_OLD_SG'
+            'openstack/ossg.default.SOME_OLD_SG'
         ]))
 
     def test_old_openstack_data(self):
@@ -1139,10 +1146,13 @@ class TestPluginEtcd(_TestEtcdBase):
         # Check that we clean it up.
         self.etcd_data = {
             '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-            'openstack/sg-OLD': json.dumps({
+            'openstack/ossg.default.OLD': json.dumps({
                 'apiVersion': 'projectcalico.org/v3',
                 'kind': 'NetworkPolicy',
-                'metadata': {'namespace': 'openstack', 'name': 'sg-OLD'},
+                'metadata': {
+                    'namespace': 'openstack',
+                    'name': 'ossg.default.OLD'
+                },
                 'spec': {'egress': [{'action': 'Allow',
                                      'ipVersion': 4},
                                     {'action': 'Allow',
@@ -1170,7 +1180,7 @@ class TestPluginEtcd(_TestEtcdBase):
         self.assertEtcdWrites(expected_writes)
         self.assertEtcdDeletes(set([
             '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-            'openstack/sg-OLD'
+            'openstack/ossg.default.OLD'
         ]))
 
 

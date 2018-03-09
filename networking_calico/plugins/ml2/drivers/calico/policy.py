@@ -29,7 +29,7 @@ LOG = log.getLogger(__name__)
 # ID, and the name of the NetworkPolicy for each security group is 'sg-'
 # followed by the security group ID.
 SG_LABEL_PREFIX = 'ossg.'
-SG_NAME_PREFIX = 'sg-'
+SG_NAME_PREFIX = 'ossg.default.'
 
 
 class PolicySyncer(ResourceSyncer):
