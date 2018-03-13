@@ -81,8 +81,12 @@ function gate_hook {
     status=$?
 
     # Do things to get at the Felix logs.
-    ls -lrt /var/log/calico
-    cat /var/log/calico/felix.log
+    if test -d /var/log/calico; then
+	ls -lrt /var/log/calico
+	if test -f /var/log/calico/felix.log; then
+	    cat /var/log/calico/felix.log
+	fi
+    fi
 
     # Return the normal gate hook's status.
     return $status
