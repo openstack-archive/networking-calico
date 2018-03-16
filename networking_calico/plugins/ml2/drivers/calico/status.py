@@ -70,6 +70,12 @@ class StatusWatcher(etcdutils.EtcdWatcher):
         # Track the hosts with a live Felix.
         self._hosts_with_live_felix = set()
 
+        # Map of live Felix notifications: hostname -> the latest mod_revision
+        # that we have handled for that host.  We track mod_revision because
+        # EtcdWatcher has to emit duplicate notifications to us, and we want to
+        # deduplicate before passing on to the Neutron DB.
+        self._felix_live_rev = {}
+
         # Register for felix uptime updates.
         self.register_path(datamodel_v1.FELIX_STATUS_DIR +
                            "/<hostname>/status",
@@ -141,10 +147,13 @@ class StatusWatcher(etcdutils.EtcdWatcher):
                         response.key, response.value)
         else:
             self._hosts_with_live_felix.add(hostname)
-            self.calico_driver.on_felix_alive(
-                hostname,
-                new=new,
-            )
+            mod_revision = response.mod_revision
+            if self._felix_live_rev.get(hostname) != mod_revision:
+                self.calico_driver.on_felix_alive(
+                    hostname,
+                    new=new,
+                )
+                self._felix_live_rev[hostname] = mod_revision
 
     def _on_status_del(self, response, hostname):
         """Called when Felix's status key expires.  Implies felix is dead."""
