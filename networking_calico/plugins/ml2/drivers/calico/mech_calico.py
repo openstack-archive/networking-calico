@@ -1088,17 +1088,34 @@ def check_request_etcd_compaction():
                 LOG.warning("Compaction key has lost its lease; rewriting")
                 write_compaction_keys(0)
                 return
-            ttl = lease.ttl()
-            if ttl > cfg.CONF.calico.etcd_compaction_period_mins * 60:
-                # Start from scratch as though neither of the compaction keys
-                # is present.
-                LOG.warning("Unreasonably large lease TTL (%r)", ttl)
-                write_compaction_keys(0)
-                return
 
-            # Lease is there and TTL is reasonable: just wait for more time to
-            # pass then.
-            return
+            # We're now going to sanity check the lease, but that involves
+            # further requests to the etcd server, and it's possible for those
+            # to fail if the lease is expiring _right now_.  We will catch that
+            # and handle it the same as if the key was not there.
+            try:
+                ttl = lease.ttl()
+                if ttl > cfg.CONF.calico.etcd_compaction_period_mins * 60:
+                    # Start from scratch as though neither of the compaction
+                    # keys is present.
+                    LOG.warning("Unreasonably large lease TTL (%r)", ttl)
+                    write_compaction_keys(0)
+                    return
+
+                # Lease is there and TTL is reasonable: just wait for more time
+                # to pass then.
+                LOG.info("Compaction trigger TTL is %r", ttl)
+                return
+            except (etcdv3.Etcd3Exception, KeyError) as e:
+                # Etcd3Exception "Not Found" is expected if the lease has just
+                # expired and been removed.  We've also seen KeyError 'TTL' -
+                # presumably in that case the server still returns some JSON
+                # for the lease but without any 'TTL' field.
+                LOG.info("Lease expired as we were checking it: %r", e)
+
+                # Now fall through to the code below to consider requesting a
+                # compaction.
+
         except etcdv3.KeyNotFound:
             # The key has timed out, so etcd_compaction_period_mins has passed
             # since the last time we considered compaction.  (Or else the key
