@@ -166,6 +166,20 @@ class CalicoEtcdWatcher(etcdutils.EtcdWatcher):
         # network ID.
         self._last_dnsmasq_ports = {}
 
+        # Number of cancelled watches so far.  We track this because each
+        # cancelled watch leaks a connection to the etcd server - see
+        # https://github.com/dims/etcd3-gateway/issues/15.
+        self.cancelled_watch_count = 0
+
+    def _on_cancel(self):
+        MAX_CANCELLED_WATCHES = 20
+        self.cancelled_watch_count += 1
+        if self.cancelled_watch_count > MAX_CANCELLED_WATCHES:
+            LOG.warning("%r cancelled watches; exiting for restart",
+                        self.cancelled_watch_count)
+            self.subnet_watcher.stop()
+            self.stop()
+
     def start(self):
         eventlet.spawn(self.subnet_watcher.start)
         super(CalicoEtcdWatcher, self).start()
@@ -484,6 +498,9 @@ class SubnetWatcher(etcdutils.EtcdWatcher):
             on_del=self.on_subnet_del,
         )
         self.subnets_by_id = {}
+
+    def _on_cancel(self):
+        self.endpoint_watcher._on_cancel()
 
     def start(self):
         # Catch and report any exceptions that escape here.

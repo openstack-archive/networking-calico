@@ -124,6 +124,9 @@ class EtcdWatcher(object):
     def _post_snapshot_hook(self, _):
         pass
 
+    def _on_cancel(self):
+        pass
+
     def start(self):
         LOG.info("Start watching %s", self.prefix)
         self._stopped = False
@@ -281,6 +284,7 @@ class EtcdWatcher(object):
 
                 # Cancel the watch
                 cancel()
+                self._on_cancel()
                 return
 
             # Spawn a greenlet to cancel the watch if it stops working, or if
