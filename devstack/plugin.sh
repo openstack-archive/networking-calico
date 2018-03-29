@@ -129,11 +129,12 @@ EOF
 		    run_process calico-bird \
                       "${DEST}/networking-calico/devstack/auto-bird-conf.sh ${HOST_IP} ${ETCD_BIN_DIR}/etcdctl"
 
-		    # Run the Calico DHCP agent.
+		    # Run the Calico DHCP agent, with a shell wrapper
+		    # to restart it when it exits.
 		    sudo mkdir /var/log/neutron || true
 		    sudo chown `whoami` /var/log/neutron
 		    run_process calico-dhcp \
-		      "/usr/local/bin/calico-dhcp-agent --config-file $NEUTRON_CONF"
+		      "${DEST}/networking-calico/devstack/dhcp-agent-wrapper.sh --config-file $NEUTRON_CONF"
 
 		    ;;
 
