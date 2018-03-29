@@ -311,7 +311,9 @@ class TestDhcpAgent(base.BaseTestCase):
     def test_etcd_watchers_init_with_conf_values(self):
         agent = CalicoDhcpAgent()
         self.assertEqual(agent.etcd.prefix,
-                         datamodel_v3._build_key("WorkloadEndpoint", ""))
+                         datamodel_v3._build_key("WorkloadEndpoint", "") +
+                         self.hostname.replace('-', '--') +
+                         "-openstack-")
         self.assertEqual(agent.etcd.subnet_watcher.prefix,
                          datamodel_v1.SUBNET_DIR)
 
