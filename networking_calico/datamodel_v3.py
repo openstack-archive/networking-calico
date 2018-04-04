@@ -128,7 +128,7 @@ def get(resource_kind, name):
     return value['spec'], mod_revision
 
 
-def get_all(resource_kind, with_labels_and_annotations=False):
+def get_all(resource_kind, with_labels_and_annotations=False, revision=None):
     """Read all Calico v3 resources of a certain kind from etcdv3.
 
     - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
@@ -155,7 +155,7 @@ def get_all(resource_kind, with_labels_and_annotations=False):
       integer represented as a string).
     """
     prefix = _build_key(resource_kind, '')
-    results = etcdv3.get_prefix(prefix)
+    results = etcdv3.get_prefix(prefix, revision=revision)
     tuples = []
     for result in results:
         key, value, mod_revision = result

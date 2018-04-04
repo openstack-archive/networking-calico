@@ -159,8 +159,38 @@ class _TestEtcdBase(lib.Lib, unittest.TestCase):
             self.assertEqual(expected, self.recent_deletes)
         self.recent_deletes = set()
 
-    def etcd3_get(self, key, metadata=False):
+    def etcd3_get(
+        self,
+        key,
+        metadata=False,
+        range_end=None,
+        sort_target=None,
+        sort_order=None,
+        limit=None,
+        revision=None,
+    ):
         self.maybe_reset_etcd()
+
+        if range_end is not None:
+            # Ranged get...
+            assert sort_target == "key"
+            assert revision is not None
+            keys = self.etcd_data.keys()
+            keys.sort()
+            if sort_order == "descend":
+                keys.reverse()
+            result = []
+            for k in keys:
+                if k < key:
+                    continue
+                if k >= _decode(range_end):
+                    continue
+                result.append((self.etcd_data[k],
+                               {'key': k, 'mod_revision': '10'}))
+                if limit is not None and len(result) >= limit:
+                    break
+            return result
+
         if key in self.etcd_data:
             value = self.etcd_data[key]
 
