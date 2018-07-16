@@ -32,6 +32,21 @@ from networking_calico.plugins.ml2.drivers.calico.syncer import ResourceSyncer
 LOG = log.getLogger(__name__)
 
 
+# The Calico WorkloadEndpoint that represents an OpenStack VM gets a pair of
+# labels to indicate the project (aka tenant) that the VM belongs to.  The
+# label names are as follows, and the label values are the actual project ID
+# and name at the time of VM creation.  (OpenStack allows a project's name to
+# be updated subsequently; if that happens, we do _not_ reflect it by updating
+# labels of existing WorkloadEndpoints.)
+PROJECT_ID_LABEL_NAME = 'projectcalico.org/openstack-project-id'
+PROJECT_NAME_LABEL_NAME = 'projectcalico.org/openstack-project-name'
+
+# Note: Calico requires a label value to be an empty string, or to consist of
+# alphanumeric characters, '-', '_' or '.', starting and ending with an
+# alphanumeric character.  If a project name does not already meet that, we
+# substitute problem characters so that it does.
+
+
 class WorkloadEndpointSyncer(ResourceSyncer):
 
     def __init__(self, db, txn_from_context, policy_syncer):
@@ -182,6 +197,7 @@ class WorkloadEndpointSyncer(ResourceSyncer):
         )
         self.add_port_gateways(port, context)
         self.add_port_interface_name(port)
+        self.add_port_project_name(port, context)
         return port
 
     def add_port_gateways(self, port, context):
@@ -196,6 +212,25 @@ class WorkloadEndpointSyncer(ResourceSyncer):
         for ip in port['fixed_ips']:
             subnet = self.db.get_subnet(context, ip['subnet_id'])
             ip['gateway'] = subnet['gateway_ip']
+
+    def add_port_project_name(self, port, context):
+        """add_port_project_name
+
+        Determine the OpenStack project name for a given port's project/tenant
+        ID, and add it to the port dict.
+
+        This method assumes it's being called from within a database
+        transaction and does not take out another one.
+
+        """
+        # Get the project name from the context, if we're in a dynamic request
+        # context.
+        context_dict = context._plugin_context.to_dict()
+        project_name = context_dict.get('project_name', '')
+        LOG.info("project_name %r from %s", project_name, context_dict)
+
+        # Add the sanitized project name to the port dict.
+        port[PROJECT_NAME_LABEL_NAME] = datamodel_v3.sanitize(project_name)
 
 
 def endpoint_name(port):
@@ -213,6 +248,8 @@ def endpoint_labels(port):
                   for sg_id in port['security_groups'])
     labels['projectcalico.org/namespace'] = 'openstack'
     labels['projectcalico.org/orchestrator'] = 'openstack'
+    labels[PROJECT_ID_LABEL_NAME] = port['tenant_id']
+    labels[PROJECT_NAME_LABEL_NAME] = port[PROJECT_NAME_LABEL_NAME]
     return labels
 
 

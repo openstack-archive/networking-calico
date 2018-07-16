@@ -635,6 +635,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         etcd, along with any other information we may need.
         """
         LOG.info('CREATE_PORT_POSTCOMMIT: %s', context)
+        LOG.info('Plugin context %s', context._plugin_context.to_dict())
         port = context._port
 
         # Ignore if this is not an endpoint port.
@@ -662,6 +663,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         during VM migration. We farm out to the appropriate method from here.
         """
         LOG.info('UPDATE_PORT_POSTCOMMIT: %s', context)
+        LOG.info('Plugin context %s', context._plugin_context.to_dict())
         port = context._port
         original = context.original
 
@@ -728,6 +730,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         There's no database row for us to lock on here, so don't bother.
         """
         LOG.info('DELETE_PORT_POSTCOMMIT: %s', context)
+        LOG.info('Plugin context %s', context._plugin_context.to_dict())
         port = context._port
 
         # Immediately halt processing if this is not an endpoint port.
