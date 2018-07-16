@@ -32,6 +32,21 @@ from networking_calico.plugins.ml2.drivers.calico.syncer import ResourceSyncer
 LOG = log.getLogger(__name__)
 
 
+# The Calico WorkloadEndpoint that represents an OpenStack VM gets a pair of
+# labels to indicate the project (aka tenant) that the VM belongs to.  The label
+# names are as follows, and the label values are the actual project ID and name
+# at the time of VM creation.  (OpenStack allows a project's name to be updated
+# subsequently; if that happens, we do _not_ reflect it by updating labels of
+# existing WorkloadEndpoints.)
+PROJECT_ID_LABEL_NAME = 'projectcalico.org/openstack-project-id'
+PROJECT_NAME_LABEL_NAME = 'projectcalico.org/openstack-project-name'
+
+# Note: Calico requires a label value to be an empty string, or to consist of
+# alphanumeric characters, '-', '_' or '.', starting and ending with an
+# alphanumeric character.  If a project name does not already meet that, we
+# substitute problem characters so that it does.
+
+
 class WorkloadEndpointSyncer(ResourceSyncer):
 
     def __init__(self, db, txn_from_context, policy_syncer):
