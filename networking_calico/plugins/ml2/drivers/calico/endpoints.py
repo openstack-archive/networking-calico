@@ -25,6 +25,8 @@ from networking_calico.compat import n_exc
 from networking_calico import datamodel_v3
 from networking_calico.plugins.ml2.drivers.calico.policy import \
     SG_LABEL_PREFIX
+from networking_calico.plugins.ml2.drivers.calico.policy import \
+    SG_NAME_LABEL_PREFIX
 from networking_calico.plugins.ml2.drivers.calico.syncer import ResourceGone
 from networking_calico.plugins.ml2.drivers.calico.syncer import ResourceSyncer
 
@@ -32,13 +34,36 @@ from networking_calico.plugins.ml2.drivers.calico.syncer import ResourceSyncer
 LOG = log.getLogger(__name__)
 
 
+# The Calico WorkloadEndpoint that represents an OpenStack VM gets a pair of
+# labels to indicate the project (aka tenant) that the VM belongs to.  The
+# label names are as follows, and the label values are the actual project ID
+# and name at the time of VM creation.
+#
+# (OpenStack allows a project's name to be updated subsequently; if that
+# happens, it is unspecified whether or not we reflect that by updating labels
+# of existing WorkloadEndpoints.  In practice the project name label will
+# probably change when the WorkloadEndpoint is next rewritten for some other
+# reason.  Deployments that use these labels are recommended not to change
+# project names post-creation.)
+PROJECT_ID_LABEL_NAME = 'projectcalico.org/openstack-project-id'
+PROJECT_NAME_LABEL_NAME = 'projectcalico.org/openstack-project-name'
+
+# Note: Calico requires a label value to be an empty string, or to consist of
+# alphanumeric characters, '-', '_' or '.', starting and ending with an
+# alphanumeric character.  If a project name does not already meet that, we
+# substitute problem characters so that it does.
+
+
 class WorkloadEndpointSyncer(ResourceSyncer):
 
-    def __init__(self, db, txn_from_context, policy_syncer):
+    def __init__(self, db, txn_from_context, policy_syncer, keystone_client):
         super(WorkloadEndpointSyncer, self).__init__(db,
                                                      txn_from_context,
                                                      "WorkloadEndpoint")
         self.policy_syncer = policy_syncer
+        self.keystone = keystone_client
+        self.proj_name_cache = {}
+        self.sg_name_cache = {}
 
     # The following methods differ from those for other resources because for
     # endpoints we need to read, compare and write labels and annotations as
@@ -92,7 +117,9 @@ class WorkloadEndpointSyncer(ResourceSyncer):
                 raise ResourceGone()
         port = self.add_extra_port_information(context, port)
         return (endpoint_spec(port),
-                endpoint_labels(port),
+                endpoint_labels(port,
+                                self.proj_name_cache,
+                                self.sg_name_cache),
                 endpoint_annotations(port))
 
     def write_endpoint(self, port, context):
@@ -114,7 +141,9 @@ class WorkloadEndpointSyncer(ResourceSyncer):
         datamodel_v3.put("WorkloadEndpoint",
                          endpoint_name(port),
                          endpoint_spec(port),
-                         labels=endpoint_labels(port),
+                         labels=endpoint_labels(port,
+                                                self.proj_name_cache,
+                                                self.sg_name_cache),
                          annotations=endpoint_annotations(port))
 
     def delete_endpoint(self, port):
@@ -182,6 +211,11 @@ class WorkloadEndpointSyncer(ResourceSyncer):
         )
         self.add_port_gateways(port, context)
         self.add_port_interface_name(port)
+        self.cache_port_project_name(port, context)
+
+        # Ensure that we've cached the name for each required security group.
+        self.cache_sg_names(port['security_groups'], context)
+
         return port
 
     def add_port_gateways(self, port, context):
@@ -197,6 +231,61 @@ class WorkloadEndpointSyncer(ResourceSyncer):
             subnet = self.db.get_subnet(context, ip['subnet_id'])
             ip['gateway'] = subnet['gateway_ip']
 
+    def cache_sg_names(self, sgids, context):
+        """cache_sg_names
+
+        Get and cache the name of each specified security group.
+
+        This method assumes it's being called from within a database
+        transaction and does not take out another one.
+        """
+        filters = {'id': sgids}
+        for sg in self.db.get_security_groups(context, filters=filters):
+            if sg['id'] not in self.sg_name_cache:
+                self.sg_name_cache[sg['id']] = datamodel_v3.sanitize(
+                    sg['name']
+                )
+
+    def cache_port_project_name(self, port, context):
+        """cache_port_project_name
+
+        Determine and cache the OpenStack project name for a given port's
+        project/tenant ID, if we haven't already.
+        """
+        proj_id = port.get('project_id', port.get('tenant_id'))
+        if proj_id is None:
+            LOG.warning("Port with no project ID: %r", port)
+            return
+
+        # If we've already cached the corresponding project name, we're done.
+        if proj_id in self.proj_name_cache:
+            LOG.debug("Project name %r already cached",
+                      self.proj_name_cache[proj_id])
+            return
+
+        # Get the project name from the request context if its available and
+        # matches the port's project ID.
+        cdict = context.to_dict()
+        LOG.info("Request context %s", cdict)
+        req_proj_id = cdict.get('project_id', cdict.get('tenant_id'))
+        req_proj_name = cdict.get('project_name', cdict.get('tenant_name'))
+        if req_proj_id == proj_id and req_proj_name is not None:
+            LOG.info("Got project name %r from request", req_proj_name)
+            self.proj_name_cache[proj_id] = datamodel_v3.sanitize(
+                req_proj_name)
+            return
+
+        # Last resort, look up the port's project ID in the Keystone DB.
+        try:
+            for proj in self.keystone.projects.list(id=proj_id):
+                LOG.info("Got project name %r from Keystone", proj.name)
+                self.proj_name_cache[proj_id] = datamodel_v3.sanitize(
+                    proj.name)
+                return
+        except Exception:
+            # Probably don't have right credentials for that lookup.
+            LOG.exception("Failed to query Keystone DB")
+
 
 def endpoint_name(port):
     def escape_dashes(s):
@@ -208,11 +297,22 @@ def endpoint_name(port):
     )
 
 
-def endpoint_labels(port):
-    labels = dict((SG_LABEL_PREFIX + sg_id, '')
-                  for sg_id in port['security_groups'])
+def endpoint_labels(port, proj_name_cache, sg_name_cache):
+    labels = {}
+    for sg_id in port['security_groups']:
+        sg_name = sg_name_cache.get(sg_id, '')
+        labels[SG_LABEL_PREFIX + sg_id] = sg_name
+        if sg_name:
+            labels[SG_NAME_LABEL_PREFIX + sg_name] = sg_id
     labels['projectcalico.org/namespace'] = 'openstack'
     labels['projectcalico.org/orchestrator'] = 'openstack'
+
+    proj_id = port.get('project_id', port.get('tenant_id'))
+    if proj_id is not None:
+        labels[PROJECT_ID_LABEL_NAME] = proj_id
+        if proj_id in proj_name_cache:
+            labels[PROJECT_NAME_LABEL_NAME] = proj_name_cache[proj_id]
+
     return labels
 
 

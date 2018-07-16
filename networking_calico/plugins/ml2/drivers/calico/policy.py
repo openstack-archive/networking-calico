@@ -29,6 +29,7 @@ LOG = log.getLogger(__name__)
 # followed by the security group ID, and the name of the NetworkPolicy for each
 # security group is 'ossg.default.'  followed by the security group ID.
 SG_LABEL_PREFIX = 'sg.projectcalico.org/openstack-'
+SG_NAME_LABEL_PREFIX = 'sg-name.projectcalico.org/openstack-'
 SG_NAME_PREFIX = 'ossg.default.'
 
 
