@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import json
+import re
 import uuid
 
 from networking_calico.compat import log
@@ -200,6 +201,27 @@ def delete(resource_kind, name, mod_revision=None):
     """
     key = _build_key(resource_kind, name)
     return etcdv3.delete(key, mod_revision=mod_revision)
+
+
+SANITIZE_LABEL_MAX_LENGTH = 63
+
+
+def sanitize_label_name_value(name, max_length):
+    """Sanitize a label name or value.
+
+    By converting unsupported characters to '_' and ensuring that the first and
+    last characters are alphanumeric, and that the length is within a specified
+    maximum length.
+    """
+    name = re.sub('[^-_.A-Za-z0-9]', '_', name[:max_length])
+    # Ensure that the first character is alphanumeric.
+    if not re.match('^[A-Za-z0-9]', name):
+        name = 'a' + name[:max_length-1]
+    # Ensure that the last character is alphanumeric.
+    if not re.match('.*[A-Za-z0-9]$', name):
+        name = name[:max_length-1] + 'a'
+
+    return name
 
 
 def _is_namespaced(resource_kind):
