@@ -383,6 +383,11 @@ class TestPluginEtcd(_TestEtcdBase):
             self.test_start_two_ports()
             self.etcd_data = {}
 
+    def make_context(self):
+        context = mock.MagicMock()
+        context._plugin_context.to_dict.return_value = {}
+        return context
+
     def test_start_two_ports(self):
         """Startup with two existing ports but no existing etcd data."""
         # Provide two Neutron ports.
@@ -415,6 +420,8 @@ class TestPluginEtcd(_TestEtcdBase):
                 'labels': {
                     'sg.projectcalico.org/openstack-SGID-default': '',
                     'projectcalico.org/namespace': 'openstack',
+                    'projectcalico.org/openstack-project-id': 'jane3',
+                    'projectcalico.org/openstack-project-name': '',
                     'projectcalico.org/orchestrator': 'openstack'
                 }
             },
@@ -442,6 +449,8 @@ class TestPluginEtcd(_TestEtcdBase):
                 'labels': {
                     'sg.projectcalico.org/openstack-SGID-default': '',
                     'projectcalico.org/namespace': 'openstack',
+                    'projectcalico.org/openstack-project-id': 'jane3',
+                    'projectcalico.org/openstack-project-name': '',
                     'projectcalico.org/orchestrator': 'openstack'
                 }
             },
@@ -472,7 +481,7 @@ class TestPluginEtcd(_TestEtcdBase):
         self.assertEtcdDeletes(set())
 
         # Delete lib.port1.
-        context = mock.MagicMock()
+        context = self.make_context()
         context._port = lib.port1
         context._plugin_context.session.query.return_value.filter_by.\
             side_effect = self.port_query
@@ -561,6 +570,8 @@ class TestPluginEtcd(_TestEtcdBase):
                 'labels': {
                     'sg.projectcalico.org/openstack-SGID-default': '',
                     'projectcalico.org/namespace': 'openstack',
+                    'projectcalico.org/openstack-project-id': 'jane3',
+                    'projectcalico.org/openstack-project-name': '',
                     'projectcalico.org/orchestrator': 'openstack'
                 }
             },
@@ -895,7 +906,7 @@ class TestPluginEtcd(_TestEtcdBase):
         self.osdb_subnets = [subnet1, subnet2]
 
         # Notify creation of subnet1, and expect corresponding etcd write.
-        context = mock.MagicMock()
+        context = self.make_context()
         context.current = subnet1
         self.driver.create_subnet_postcommit(context)
         self.assertEtcdWrites({

@@ -56,6 +56,7 @@ sys.modules['networking_calico.compat'] = m_compat = mock.MagicMock()
 port1 = {'binding:vif_type': 'tap',
          'binding:host_id': 'felix-host-1',
          'id': 'DEADBEEF-1234-5678',
+         'tenant_id': 'jane3',
          'network_id': 'calico-network-id',
          'device_id': 'instance-1',
          'device_owner': 'compute:nova',
@@ -69,6 +70,7 @@ port1 = {'binding:vif_type': 'tap',
 port2 = {'binding:vif_type': 'tap',
          'binding:host_id': 'felix-host-1',
          'id': 'FACEBEEF-1234-5678',
+         'tenant_id': 'jane3',
          'network_id': 'calico-network-id',
          'device_id': 'instance-2',
          'device_owner': 'compute:nova',
@@ -83,6 +85,7 @@ port2 = {'binding:vif_type': 'tap',
 port3 = {'binding:vif_type': 'tap',
          'binding:host_id': 'felix-host-2',
          'id': 'HELLO-1234-5678',
+         'tenant_id': 'jane3',
          'network_id': 'calico-network-id',
          'device_id': 'instance-3',
          'device_owner': 'compute:nova',
@@ -223,7 +226,7 @@ class Lib(object):
         # Hook the (mock) Neutron database.
         self.db = mech_calico.plugin_dir.get_plugin()
         self.db_context = mech_calico.ctx.get_admin_context()
-
+        self.db_context.to_dict.return_value = {}
         self.db_context.session.query.return_value.filter_by.side_effect = (
             self.port_query
         )
