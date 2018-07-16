@@ -78,6 +78,11 @@ from networking_calico.plugins.ml2.drivers.calico.policy import PolicySyncer
 from networking_calico.plugins.ml2.drivers.calico.status import StatusWatcher
 from networking_calico.plugins.ml2.drivers.calico.subnets import SubnetSyncer
 
+# Imports for a Keystone client.
+from keystoneauth1.identity import v3
+from keystoneauth1 import session
+from keystoneclient.v3.client import Client as KeystoneClient
+
 LOG = log.getLogger(__name__)
 
 calico_opts = [
@@ -266,6 +271,21 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             self.db = None
             self._get_db()
 
+            # Create a Keystone client.
+            authcfg = cfg.CONF.keystone_authtoken
+            LOG.debug("authcfg = %r", authcfg)
+            for key in authcfg:
+                LOG.debug("authcfg[%s] = %s", key, authcfg[key])
+            auth = v3.Password(user_domain_name=authcfg.user_domain_name,
+                               username=authcfg.username,
+                               password=authcfg.password,
+                               project_domain_name=authcfg.project_domain_name,
+                               project_name=authcfg.project_name,
+                               auth_url=authcfg.auth_url + '/v3')
+            sess = session.Session(auth=auth)
+            keystone_client = KeystoneClient(session=sess)
+            LOG.debug("Keystone client = %r", keystone_client)
+
             # Create syncers.
             self.subnet_syncer = \
                 SubnetSyncer(self.db, self._txn_from_context)
@@ -274,7 +294,8 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             self.endpoint_syncer = \
                 WorkloadEndpointSyncer(self.db,
                                        self._txn_from_context,
-                                       self.policy_syncer)
+                                       self.policy_syncer,
+                                       keystone_client)
 
             # Admin context used by (only) the thread that updates Felix agent
             # status.
@@ -635,6 +656,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         etcd, along with any other information we may need.
         """
         LOG.info('CREATE_PORT_POSTCOMMIT: %s', context)
+        LOG.info('Plugin context %s', context._plugin_context.to_dict())
         port = context._port
 
         # Ignore if this is not an endpoint port.
@@ -662,6 +684,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         during VM migration. We farm out to the appropriate method from here.
         """
         LOG.info('UPDATE_PORT_POSTCOMMIT: %s', context)
+        LOG.info('Plugin context %s', context._plugin_context.to_dict())
         port = context._port
         original = context.original
 
@@ -728,6 +751,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         There's no database row for us to lock on here, so don't bother.
         """
         LOG.info('DELETE_PORT_POSTCOMMIT: %s', context)
+        LOG.info('Plugin context %s', context._plugin_context.to_dict())
         port = context._port
 
         # Immediately halt processing if this is not an endpoint port.
