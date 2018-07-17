@@ -1,0 +1,9 @@
+Code-Review+2: Neil Jerram <neil@tigera.io>
+Workflow+1: Neil Jerram <neil@tigera.io>
+Code-Review+1: Brin Zhang <zhangbailin@inspur.com>
+Verified+2: Zuul
+Submitted-by: Zuul
+Submitted-at: Tue, 17 Jul 2018 02:00:31 +0000
+Reviewed-on: https://review.openstack.org/583043
+Project: openstack/networking-calico
+Branch: refs/heads/master
