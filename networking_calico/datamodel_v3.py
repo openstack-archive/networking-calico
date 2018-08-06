@@ -213,19 +213,13 @@ def sanitize_label_name_value(name, max_length):
     last characters are alphanumeric, and that the length is within a specified
     maximum length.
     """
-    name = re.sub('[^-_.A-Za-z0-9]', '_', name[:max_length])
-    # Ensure that the first character is alphanumeric, by deleting leading
-    # characters that are not alphanumeric.
-    m = re.match('^([^A-Za-z0-9]+)', name)
+    m = re.match('^[^A-Za-z0-9]*([A-Za-z0-9_-]{0,%d}[A-Za-z0-9])' %
+                 (max_length - 1),
+                 re.sub('[^-_.A-Za-z0-9]', '_', name))
     if m:
-        name = name[m.end(1):]
-    # Ensure that the last character is alphanumeric, by deleting trailing
-    # characters that are not alphanumeric.
-    m = re.match('.*?([^A-Za-z0-9]+)$', name)
-    if m:
-        name = name[:m.start(1)]
-
-    return name
+        return m.group(1)
+    else:
+        return ''
 
 
 def _is_namespaced(resource_kind):
