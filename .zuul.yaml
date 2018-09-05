@@ -1,4 +1,6 @@
 - project:
+    templates:
+      - check-requirements
     check:
       jobs:
         - networking-calico-tempest-dsvm
