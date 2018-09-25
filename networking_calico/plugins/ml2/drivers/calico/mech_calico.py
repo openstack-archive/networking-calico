@@ -277,7 +277,10 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             authcfg = cfg.CONF.keystone_authtoken
             LOG.debug("authcfg = %r", authcfg)
             for key in authcfg:
-                LOG.debug("authcfg[%s] = %s", key, authcfg[key])
+                if 'password' in key:
+                    LOG.debug("authcfg[%s] = %s", key, '***')
+                else:
+                    LOG.debug("authcfg[%s] = %s", key, authcfg[key])
             auth = v3.Password(user_domain_name=authcfg.user_domain_name,
                                username=authcfg.username,
                                password=authcfg.password,
