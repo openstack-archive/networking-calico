@@ -23,28 +23,28 @@ Calico/OpenStack deployment.
 """
 import re
 
+
+# Region string used when no region name has been configured.
+NO_REGION = "no-region"
+
+# Region string prefix used when a region name has been configured.
+REGION_PREFIX = "region-"
+
+
 # Subtree used by Felix to report its own status (as an OpenStack
 # 'agent') and the status of each endpoint (or OpenStack 'port') that
 # it is responsible for.
 #
-# Agent status is at /calico/felix/v1/host/<hostname>/status.
+# Agent status is at /calico/felix/v2/<region_string>/host/<hostname>/status.
 #
-# Port status is at /calico/felix/v1/host/<hostname>/
+# Port status is at /calico/felix/v2/<region_string>//host/<hostname>/
 #                    workload/openstack/<workload>/endpoint/<endpoint>.
-FELIX_STATUS_DIR = "/calico/felix/v1/host"
+def felix_status_dir(region_string=NO_REGION):
+    return "/calico/felix/v2/%s/host" % region_string
+
 
 # Key used for leader election by Neutron mechanism drivers.
 NEUTRON_ELECTION_KEY = "/calico/openstack/v1/neutron_election"
-
-# Regex to match endpoints, captures "hostname" and "endpoint_id".
-# Works for endpoint status paths.
-ENDPOINT_KEY_RE = re.compile(
-    r'^(?:' + FELIX_STATUS_DIR + r')'
-    r'/(?P<hostname>[^/]+)/'
-    r'workload/'
-    r'(?P<orchestrator>[^/]+)/'
-    r'(?P<workload_id>[^/]+)/'
-    r'endpoint/(?P<endpoint_id>[^/]+)')
 
 ENDPOINT_STATUS_UP = "up"
 ENDPOINT_STATUS_DOWN = "down"
@@ -59,8 +59,22 @@ def key_for_subnet(subnet_id):
     return SUBNET_DIR + "/%s" % subnet_id
 
 
-def get_endpoint_id_from_key(key):
-    m = ENDPOINT_KEY_RE.match(key)
+# Regex to match endpoints, captures "hostname" and "endpoint_id".
+# Works for endpoint status paths.
+_cached_endpoint_key_re = None
+
+
+def get_endpoint_id_from_key(region_string, key):
+    global _cached_endpoint_key_re
+    if _cached_endpoint_key_re is None:
+        _cached_endpoint_key_re = re.compile(
+            r'^(?:' + felix_status_dir(region_string) + r')'
+            r'/(?P<hostname>[^/]+)/'
+            r'workload/'
+            r'(?P<orchestrator>[^/]+)/'
+            r'(?P<workload_id>[^/]+)/'
+            r'endpoint/(?P<endpoint_id>[^/]+)')
+    m = _cached_endpoint_key_re.match(key)
     if m:
         # Got an endpoint.
         host = m.group("hostname")
