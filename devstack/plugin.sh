@@ -21,8 +21,8 @@ if [ "${Q_AGENT}" = calico-felix ]; then
 		    # before project source is installed.
 		    echo Calico plugin: pre-install
 
-		    # Add Calico master PPA as a package source.
-		    sudo apt-add-repository -y ppa:project-calico/master
+		    # Add Calico testing PPA as a package source.
+		    sudo apt-add-repository -y ppa:project-calico/testing
 		    REPOS_UPDATED=False
 
 		    # Also add BIRD project PPA as a package source.
@@ -50,6 +50,7 @@ if [ "${Q_AGENT}" = calico-felix ]; then
 [global]
 DatastoreType = etcdv3
 EtcdEndpoints = http://${SERVICE_HOST}:${ETCD_PORT}
+OpenstackRegion = RegionOne
 EOF
 		    if [ "${ENABLE_DEBUG_LOG_LEVEL}" = True ]; then
 			sudo sh -c "cat >> /etc/calico/felix.cfg" << EOF
