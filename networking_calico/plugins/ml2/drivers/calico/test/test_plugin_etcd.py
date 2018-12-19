@@ -238,11 +238,12 @@ class _TestEtcdBase(lib.Lib, unittest.TestCase):
 
         # Slow down reading from etcd status subtree to allow threads to run
         # more often
-        if wait and key == datamodel_v1.FELIX_STATUS_DIR:
+        if wait and key == datamodel_v1.felix_status_dir():
             eventlet.sleep(30)
             self.driver.db.create_or_update_agent = mock.Mock()
 
-        self.etcd_data[datamodel_v1.FELIX_STATUS_DIR + "/vm1/status"] = \
+        self.etcd_data[datamodel_v1.felix_status_dir() +
+                       "/vm1/status"] = \
             json.dumps({
                 "time": "2015-08-14T10:37:54"
             })
@@ -318,6 +319,8 @@ class TestPluginEtcd(_TestEtcdBase):
         lib.m_compat.cfg.CONF.calico.num_port_status_threads = 4
         lib.m_compat.cfg.CONF.calico.etcd_compaction_period_mins = 0
         lib.m_compat.cfg.CONF.calico.project_name_cache_max = 0
+        lib.m_compat.cfg.CONF.calico.openstack_region = None
+        lib.m_compat.cfg.CONF.nova.region_name = None
 
         # This value needs to be a string:
         lib.m_compat.cfg.CONF.keystone_authtoken.auth_url = ""
@@ -1503,6 +1506,8 @@ class TestStatusWatcher(_TestEtcdBase):
         lib.m_compat.cfg.CONF.calico.etcd_key_file = None
         lib.m_compat.cfg.CONF.calico.etcd_cert_file = None
         lib.m_compat.cfg.CONF.calico.etcd_ca_cert_file = None
+        lib.m_compat.cfg.CONF.calico.openstack_region = None
+        lib.m_compat.cfg.CONF.nova.region_name = None
         super(TestStatusWatcher, self).setUp()
         self.driver = mock.Mock(spec=mech_calico.CalicoMechanismDriver)
         self.watcher = status.StatusWatcher(self.driver)
@@ -1516,13 +1521,15 @@ class TestStatusWatcher(_TestEtcdBase):
     def test_snapshot(self):
         # Populate initial status tree data, for initial snapshot testing.
 
-        felix_status_key = '/calico/felix/v1/host/hostname/status'
+        felix_status_key = '/calico/felix/v2/no-region/host/hostname/status'
         felix_last_reported_status_key = \
-            '/calico/felix/v1/host/hostname/last_reported_status'
-        ep_on_that_host_key = ('/calico/felix/v1/host/hostname/workload/' +
-                               'openstack/wlid/endpoint/ep1')
-        ep_on_unknown_host_key = ('/calico/felix/v1/host/unknown/workload/' +
-                                  'openstack/wlid/endpoint/ep2')
+            '/calico/felix/v2/no-region/host/hostname/last_reported_status'
+        ep_on_that_host_key = (
+            '/calico/felix/v2/no-region/host/hostname/workload/' +
+            'openstack/wlid/endpoint/ep1')
+        ep_on_unknown_host_key = (
+            '/calico/felix/v2/no-region/host/unknown/workload/' +
+            'openstack/wlid/endpoint/ep2')
 
         self.etcd_data = {
             # An agent status key to ignore.
@@ -1605,8 +1612,8 @@ class TestStatusWatcher(_TestEtcdBase):
         # back to high after the snapshot.
         watch_events = [{
             "kv": {
-                "key": "/calico/felix/v1/host/hostname/workload/openstack/"
-                       "wlid/endpoint/ep1",
+                "key": "/calico/felix/v2/no-region/host/hostname/workload/"
+                       "openstack/wlid/endpoint/ep1",
                 "value": '{"status": "up"}',
             },
             "type": "SET",
@@ -1637,7 +1644,7 @@ class TestStatusWatcher(_TestEtcdBase):
 
     def test_endpoint_status_add_bad_json(self):
         m_port_status_node = mock.Mock()
-        m_port_status_node.key = "/calico/felix/v1/host/hostname/workload/" \
+        m_port_status_node.key = "/calico/felix/v2/no-region/host/hostname/workload/" \
                                  "openstack/wlid/endpoint/ep1"
         m_port_status_node.value = '{"status": "up"'
         self.watcher._on_ep_set(m_port_status_node, "hostname", "wlid", "ep1")
@@ -1651,7 +1658,7 @@ class TestStatusWatcher(_TestEtcdBase):
 
     def test_endpoint_status_add_bad_id(self):
         m_port_status_node = mock.Mock()
-        m_port_status_node.key = "/calico/felix/v1/host/hostname/workload/" \
+        m_port_status_node.key = "/calico/felix/v2/no-region/host/hostname/workload/" \
                                  "openstack/wlid/endpoint"
         self.watcher._on_ep_set(m_port_status_node, "hostname", "wlid", "ep1")
         self.assertEqual(
@@ -1662,7 +1669,7 @@ class TestStatusWatcher(_TestEtcdBase):
     def _add_test_endpoint(self):
         # Add a workload to be deleted
         m_port_status_node = mock.Mock()
-        m_port_status_node.key = "/calico/felix/v1/host/hostname/workload/" \
+        m_port_status_node.key = "/calico/felix/v2/no-region/host/hostname/workload/" \
                                  "openstack/wlid/endpoint/ep1"
         m_port_status_node.value = '{"status": "up"}'
         self.watcher._on_ep_set(m_port_status_node, "hostname", "wlid", "ep1")
@@ -1675,7 +1682,7 @@ class TestStatusWatcher(_TestEtcdBase):
     def test_status_bad_json(self):
         for value in ["{", 10, "foo"]:
             m_response = mock.Mock()
-            m_response.key = "/calico/felix/v1/host/hostname/status"
+            m_response.key = "/calico/felix/v2/no-region/host/hostname/status"
             m_response.value = value
             self.watcher._on_status_set(m_response, "foo")
         self.assertFalse(self.driver.on_felix_alive.called)
@@ -1683,14 +1690,14 @@ class TestStatusWatcher(_TestEtcdBase):
     def test_felix_status_expiry(self):
         # Put an endpoint in the cache to find later...
         m_response = mock.Mock()
-        m_response.key = "/calico/felix/v1/host/hostname/workload/" \
+        m_response.key = "/calico/felix/v2/no-region/host/hostname/workload/" \
                          "openstack/wlid/endpoint/epid"
         m_response.value = '{"status": "up"}'
         self.watcher._on_ep_set(m_response, "hostname", "wlid", "epid")
 
         # Then note that felix is down.
         m_response = mock.Mock()
-        m_response.key = "/calico/felix/v1/host/hostname/status"
+        m_response.key = "/calico/felix/v2/no-region/host/hostname/status"
         self.watcher._on_status_del(m_response, "hostname")
 
         # Check that nothing happens to the port.  (Previously, we used to mark
