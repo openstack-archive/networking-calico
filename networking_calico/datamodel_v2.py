@@ -77,3 +77,8 @@ def get_endpoint_id_from_key(region_string, key):
         return combined_id
     else:
         return None
+
+
+# Region-aware subnet path.
+def subnet_dir(region_string=NO_REGION):
+    return "/calico/dhcp/v2/%s/subnet" % region_string
