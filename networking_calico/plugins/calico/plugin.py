@@ -24,6 +24,9 @@ LOG = log.getLogger(__name__)
 
 
 class CalicoPlugin(Ml2Plugin, l3_db.L3_NAT_db_mixin):
+
+    __native_bulk_support = True
+
     def __init__(self):
         # Add the ability to handle floating IPs.
         self._supported_extension_aliases.extend(["router"])
