@@ -49,7 +49,8 @@ class ResourceSyncer(object):
       stored in etcd, and conversely can be constructed from a resource's etcd
       key.  (So the name could be the complete etcd key; but it doesn't have to
       be, and for the v3 resources here it is just the metadata name field -
-      which works because we only use a single namespace, 'openstack'.)
+      which works because we only use a single namespace,
+      'openstack-no-region'.)
 
     - The data needs to be in some form that is comparable, between the data
       that exists in etcd for a given resource name, and the data for that same

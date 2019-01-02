@@ -330,7 +330,7 @@ def endpoint_labels(port):
         labels[SG_LABEL_PREFIX + sg_id] = sg_name
         if sg_name:
             labels[SG_NAME_LABEL_PREFIX + sg_name] = sg_id
-    labels['projectcalico.org/namespace'] = 'openstack'
+    labels['projectcalico.org/namespace'] = 'openstack-no-region'
     labels['projectcalico.org/orchestrator'] = 'openstack'
 
     proj_id = port.get('project_id', port.get('tenant_id'))

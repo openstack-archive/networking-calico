@@ -83,7 +83,7 @@ def put(resource_kind, name, spec, annotations={}, labels=None,
         }
     # Ensure namespace set, for a namespaced resource.
     if _is_namespaced(resource_kind):
-        value['metadata']['namespace'] = 'openstack'
+        value['metadata']['namespace'] = 'openstack-no-region'
     # Ensure that there is a creation timestamp.
     if 'creationTimestamp' not in value['metadata']:
         value['metadata']['creationTimestamp'] = timestamp_now()
@@ -246,8 +246,9 @@ def _plural(resource_kind):
 
 def _build_key(resource_kind, name):
     if _is_namespaced(resource_kind):
-        # Use 'openstack' as the namespace.
-        template = "/calico/resources/v3/projectcalico.org/%s/openstack/%s"
+        # Use 'openstack-no-region' as the namespace.
+        template = ("/calico/resources/v3/projectcalico.org/%s/" +
+                    "openstack-no-region/%s")
     else:
         template = "/calico/resources/v3/projectcalico.org/%s/%s"
     return template % (_plural(resource_kind).lower(), name)

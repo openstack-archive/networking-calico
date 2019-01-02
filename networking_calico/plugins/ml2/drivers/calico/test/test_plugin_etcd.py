@@ -328,12 +328,12 @@ class TestPluginEtcd(_TestEtcdBase):
 
     sg_default_key_v3 = (
         '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-        'openstack/ossg.default.SGID-default')
+        'openstack-no-region/ossg.default.SGID-default')
     sg_default_value_v3 = {
         'apiVersion': 'projectcalico.org/v3',
         'kind': 'NetworkPolicy',
         'metadata': {
-            'namespace': 'openstack',
+            'namespace': 'openstack-no-region',
             'name': 'ossg.default.SGID-default'
         },
         'spec': {
@@ -408,11 +408,11 @@ class TestPluginEtcd(_TestEtcdBase):
 
         ep_deadbeef_key_v3 = (
             '/calico/resources/v3/projectcalico.org/workloadendpoints/' +
-            'openstack/felix--host--1-openstack-' +
+            'openstack-no-region/felix--host--1-openstack-' +
             'instance--1-DEADBEEF--1234--5678')
         ep_facebeef_key_v3 = (
             '/calico/resources/v3/projectcalico.org/workloadendpoints/' +
-            'openstack/felix--host--1-openstack-' +
+            'openstack-no-region/felix--host--1-openstack-' +
             'instance--2-FACEBEEF--1234--5678')
         ep_deadbeef_value_v3 = {
             'apiVersion': 'projectcalico.org/v3',
@@ -424,13 +424,13 @@ class TestPluginEtcd(_TestEtcdBase):
                 },
                 'name': ('felix--host--1-openstack-instance' +
                          '--1-DEADBEEF--1234--5678'),
-                'namespace': 'openstack',
+                'namespace': 'openstack-no-region',
                 'labels': {
                     'sg.projectcalico.org/openstack-SGID-default':
                     'My_default_SG',
                     'sg-name.projectcalico.org/openstack-My_default_SG':
                     'SGID-default',
-                    'projectcalico.org/namespace': 'openstack',
+                    'projectcalico.org/namespace': 'openstack-no-region',
                     'projectcalico.org/openstack-project-id': 'jane3',
                     'projectcalico.org/openstack-project-name': 'pname_jane3',
                     'projectcalico.org/orchestrator': 'openstack'
@@ -456,13 +456,13 @@ class TestPluginEtcd(_TestEtcdBase):
                 },
                 'name': ('felix--host--1-openstack-instance' +
                          '--2-FACEBEEF--1234--5678'),
-                'namespace': 'openstack',
+                'namespace': 'openstack-no-region',
                 'labels': {
                     'sg.projectcalico.org/openstack-SGID-default':
                     'My_default_SG',
                     'sg-name.projectcalico.org/openstack-My_default_SG':
                     'SGID-default',
-                    'projectcalico.org/namespace': 'openstack',
+                    'projectcalico.org/namespace': 'openstack-no-region',
                     'projectcalico.org/openstack-project-id': 'jane3',
                     'projectcalico.org/openstack-project-name': 'pname_jane3',
                     'projectcalico.org/orchestrator': 'openstack'
@@ -568,7 +568,7 @@ class TestPluginEtcd(_TestEtcdBase):
 
         ep_hello_key_v3 = (
             '/calico/resources/v3/projectcalico.org/workloadendpoints/' +
-            'openstack/felix--host--2-openstack-' +
+            'openstack-no-region/felix--host--2-openstack-' +
             'instance--3-HELLO--1234--5678')
         ep_hello_value_v3 = {
             'apiVersion': 'projectcalico.org/v3',
@@ -580,13 +580,13 @@ class TestPluginEtcd(_TestEtcdBase):
                 },
                 'name': ('felix--host--2-openstack-instance' +
                          '--3-HELLO--1234--5678'),
-                'namespace': 'openstack',
+                'namespace': 'openstack-no-region',
                 'labels': {
                     'sg.projectcalico.org/openstack-SGID-default':
                     'My_default_SG',
                     'sg-name.projectcalico.org/openstack-My_default_SG':
                     'SGID-default',
-                    'projectcalico.org/namespace': 'openstack',
+                    'projectcalico.org/namespace': 'openstack-no-region',
                     'projectcalico.org/openstack-project-id': 'jane3',
                     'projectcalico.org/openstack-project-name': 'pname_jane3',
                     'projectcalico.org/orchestrator': 'openstack'
@@ -709,12 +709,12 @@ class TestPluginEtcd(_TestEtcdBase):
 
         sg_1_key_v3 = (
             '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-            'openstack/ossg.default.SG-1')
+            'openstack-no-region/ossg.default.SG-1')
         sg_1_value_v3 = {
             'apiVersion': 'projectcalico.org/v3',
             'kind': 'NetworkPolicy',
             'metadata': {
-                'namespace': 'openstack',
+                'namespace': 'openstack-no-region',
                 'name': 'ossg.default.SG-1'
             },
             'spec': {
@@ -1176,33 +1176,34 @@ class TestPluginEtcd(_TestEtcdBase):
         self.assertEtcdDeletes(set())
 
     def test_policy_coexistence(self):
-        """Coexistence with other policy data in the 'openstack' namespace.
+        """Coexistence with other data in the 'openstack-no-region' namespace.
 
         Check that we _do_ clean up old policy data that has our prefix, but
         _don't_ touch policies without our prefix.
         """
 
-        # Start up with two existing policies in the 'openstack' namespace.
+        # Start up with two existing policies in the 'openstack-no-region'
+        # namespace.
         self.etcd_data = {
             '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-            'openstack/customer-policy-1': json.dumps({
+            'openstack-no-region/customer-policy-1': json.dumps({
                 'apiVersion': 'projectcalico.org/v3',
                 'kind': 'NetworkPolicy',
                 'metadata': {
                     'name': 'customer-policy-2',
-                    'namespace': 'openstack',
+                    'namespace': 'openstack-no-region',
                 },
                 'spec': {
                     'selector':
                     'has(sg.projectcalico.org/openstack-SGID-default)'}}
             ),
             '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-            'openstack/ossg.default.SOME_OLD_SG': json.dumps({
+            'openstack-no-region/ossg.default.SOME_OLD_SG': json.dumps({
                 'apiVersion': 'projectcalico.org/v3',
                 'kind': 'NetworkPolicy',
                 'metadata': {
                     'name': 'ossg.default.SOME_OLD_SG',
-                    'namespace': 'openstack',
+                    'namespace': 'openstack-no-region',
                 },
                 'spec': {
                     'selector':
@@ -1223,7 +1224,7 @@ class TestPluginEtcd(_TestEtcdBase):
         # customer one.
         self.assertEtcdDeletes(set([
             '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-            'openstack/ossg.default.SOME_OLD_SG'
+            'openstack-no-region/ossg.default.SOME_OLD_SG'
         ]))
 
     def test_old_openstack_data(self):
@@ -1232,11 +1233,11 @@ class TestPluginEtcd(_TestEtcdBase):
         # Check that we clean it up.
         self.etcd_data = {
             '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-            'openstack/ossg.default.OLD': json.dumps({
+            'openstack-no-region/ossg.default.OLD': json.dumps({
                 'apiVersion': 'projectcalico.org/v3',
                 'kind': 'NetworkPolicy',
                 'metadata': {
-                    'namespace': 'openstack',
+                    'namespace': 'openstack-no-region',
                     'name': 'ossg.default.OLD'
                 },
                 'spec': {
@@ -1269,7 +1270,7 @@ class TestPluginEtcd(_TestEtcdBase):
         self.assertEtcdWrites(expected_writes)
         self.assertEtcdDeletes(set([
             '/calico/resources/v3/projectcalico.org/networkpolicies/' +
-            'openstack/ossg.default.OLD'
+            'openstack-no-region/ossg.default.OLD'
         ]))
 
 
