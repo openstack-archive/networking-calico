@@ -313,7 +313,7 @@ class TestDhcpAgent(base.BaseTestCase):
         agent = CalicoDhcpAgent()
         self.assertEqual(agent.etcd.prefix,
                          "/calico/resources/v3/projectcalico.org/" +
-                         "workloadendpoints/openstack/" +
+                         "workloadendpoints/openstack-no-region/" +
                          self.hostname.replace('-', '--') +
                          "-openstack-")
         self.assertEqual(agent.etcd.v1_subnet_watcher.prefix,
@@ -326,7 +326,7 @@ class TestDhcpAgent(base.BaseTestCase):
         agent = CalicoDhcpAgent()
         self.assertEqual(agent.etcd.prefix,
                          "/calico/resources/v3/projectcalico.org/" +
-                         "workloadendpoints/openstack/" +
+                         "workloadendpoints/openstack-no-region/" +
                          "my--special--hostname" +
                          "-openstack-")
         self.assertEqual(agent.etcd.v1_subnet_watcher.prefix,

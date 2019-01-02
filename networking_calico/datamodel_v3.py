@@ -39,11 +39,13 @@ ANN_KEY_NETWORK_ID = ANN_KEY_PREFIX + 'network-id'
 LOG = log.getLogger(__name__)
 
 
-def put(resource_kind, name, spec, annotations={}, labels=None,
+def put(resource_kind, region_string, name, spec, annotations={}, labels=None,
         mod_revision=None):
     """Write a Calico v3 resource to etcdv3.
 
     - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
+
+    - region_string (string): The region to put the resource in.
 
     - name (string): The resource's name.  This is used to form its etcd key,
       and also goes in its .Metadata.Name field.
@@ -63,11 +65,11 @@ def put(resource_kind, name, spec, annotations={}, labels=None,
 
     Returns True if the write happened successfully; False if not.
     """
-    key = _build_key(resource_kind, name)
+    key = _build_key(resource_kind, region_string, name)
     value = None
     try:
         # Get the existing resource so we can persist its metadata.
-        value, _ = _get_with_metadata(resource_kind, name)
+        value, _ = _get_with_metadata(resource_kind, region_string, name)
     except etcdv3.KeyNotFound:
         pass
     except ValueError:
@@ -83,7 +85,7 @@ def put(resource_kind, name, spec, annotations={}, labels=None,
         }
     # Ensure namespace set, for a namespaced resource.
     if _is_namespaced(resource_kind):
-        value['metadata']['namespace'] = 'openstack'
+        value['metadata']['namespace'] = get_namespace(region_string)
     # Ensure that there is a creation timestamp.
     if 'creationTimestamp' not in value['metadata']:
         value['metadata']['creationTimestamp'] = timestamp_now()
@@ -106,10 +108,12 @@ def put(resource_kind, name, spec, annotations={}, labels=None,
     return etcdv3.put(key, json.dumps(value), mod_revision=mod_revision)
 
 
-def get(resource_kind, name):
+def get(resource_kind, region_string, name):
     """Read spec of a Calico v3 resource from etcdv3.
 
     - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
+
+    - region_string (string): The region to get the resource from.
 
     - name (string): The resource's name, which is used to form its etcd key.
 
@@ -125,14 +129,24 @@ def get(resource_kind, name):
 
     Raises etcdv3.KeyNotFound if there is no resource with that kind and name.
     """
-    value, mod_revision = _get_with_metadata(resource_kind, name)
+    value, mod_revision = _get_with_metadata(resource_kind,
+                                             region_string,
+                                             name)
     return value['spec'], mod_revision
 
 
-def get_all(resource_kind, with_labels_and_annotations=False, revision=None):
+def delete_legacy(resource_kind, name_prefix=''):
+    key = _build_key(resource_kind, None, name_prefix)
+    etcdv3.delete_prefix(key)
+
+
+def get_all(resource_kind, region_string,
+            with_labels_and_annotations=False, revision=None):
     """Read all Calico v3 resources of a certain kind from etcdv3.
 
     - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
+
+    - region_string (string): The region to get resources for.
 
     - with_labels_and_annotations: If True, indicates to return the labels and
       annotations for each resource as well as the spec.
@@ -158,7 +172,7 @@ def get_all(resource_kind, with_labels_and_annotations=False, revision=None):
     - mod_revision is the revision at which that resource was last modified (an
       integer represented as a string).
     """
-    prefix = _build_key(resource_kind, '')
+    prefix = _build_key(resource_kind, region_string, '')
     results = etcdv3.get_prefix(prefix, revision=revision)
     tuples = []
     for result in results:
@@ -190,16 +204,18 @@ def get_all(resource_kind, with_labels_and_annotations=False, revision=None):
     return tuples
 
 
-def delete(resource_kind, name, mod_revision=None):
+def delete(resource_kind, region_string, name, mod_revision=None):
     """Delete a Calico v3 resource from etcdv3.
 
     - resource_kind (string): E.g. WorkloadEndpoint, Profile, etc.
+
+    - region_string (string): The region to delete the resource in.
 
     - name (string): The resource's name, which is used to form its etcd key.
 
     Returns True if the deletion was successful; False if not.
     """
-    key = _build_key(resource_kind, name)
+    key = _build_key(resource_kind, region_string, name)
     return etcdv3.delete(key, mod_revision=mod_revision)
 
 
@@ -244,19 +260,26 @@ def _plural(resource_kind):
     return resource_kind + "s"
 
 
-def _build_key(resource_kind, name):
+def get_namespace(region_string):
+    if region_string is not None:
+        return "openstack-" + region_string
+    else:
+        return "openstack"
+
+
+def _build_key(resource_kind, region_string, name):
     if _is_namespaced(resource_kind):
-        # Use 'openstack' as the namespace.
-        template = "/calico/resources/v3/projectcalico.org/%s/openstack/%s"
+        template = ("/calico/resources/v3/projectcalico.org/%s/" +
+                    get_namespace(region_string) + "/%s")
     else:
         template = "/calico/resources/v3/projectcalico.org/%s/%s"
     return template % (_plural(resource_kind).lower(), name)
 
 
-def _get_with_metadata(resource_kind, name):
+def _get_with_metadata(resource_kind, region_string, name):
     # Note: 'with_metadata' here means including the Calico data model
     # metadata, as well as the etcdv3 mod_revision.
-    key = _build_key(resource_kind, name)
+    key = _build_key(resource_kind, region_string, name)
     value_as_string, mod_revision = etcdv3.get(key)
     value = json.loads(value_as_string)
     return value, mod_revision
