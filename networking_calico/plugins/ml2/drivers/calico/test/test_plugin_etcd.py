@@ -924,6 +924,17 @@ class TestPluginEtcd(_TestEtcdBase):
     def test_subnet_hooks(self):
         """Test subnet creation, update and deletion hooks."""
 
+        # Simulate some legacy (pre-multi-region) subnet data.
+        self.etcd_data = {
+            '/calico/dhcp/v1/subnet/subnet-id-10.65.0--24': json.dumps({
+                'network_id': 'net-id-1',
+                'cidr': '10.65.0.0/24',
+                'gateway_ip': '10.65.0.1',
+                'host_routes': [{'destination': '11.11.0.0/16',
+                                 'nexthop': '10.65.0.1'}]
+            }),
+        }
+
         # Allow the etcd transport's resync thread to run.  Expect the usual
         # writes.
         with lib.FixedUUID('uuid-subnet-hooks'):
@@ -935,6 +946,11 @@ class TestPluginEtcd(_TestEtcdBase):
             '/calico/resources/v3/projectcalico.org/clusterinformations/' +
             'default']['spec']['clusterGUID'] = 'uuid-subnet-hooks'
         self.assertEtcdWrites(expected_writes)
+
+        # Check that the legacy data has been cleaned up.
+        self.assertEtcdDeletes(set([
+            '/calico/dhcp/v1/subnet/subnet-id-10.65.0--24',
+        ]))
 
         # Define two subnets.
         subnet1 = {'network_id': 'net-id-1',
@@ -959,7 +975,7 @@ class TestPluginEtcd(_TestEtcdBase):
         context.current = subnet1
         self.driver.create_subnet_postcommit(context)
         self.assertEtcdWrites({
-            '/calico/dhcp/v1/subnet/subnet-id-10.65.0--24': {
+            '/calico/dhcp/v2/no-region/subnet/subnet-id-10.65.0--24': {
                 'network_id': 'net-id-1',
                 'cidr': '10.65.0.0/24',
                 'gateway_ip': '10.65.0.1',
@@ -986,7 +1002,7 @@ class TestPluginEtcd(_TestEtcdBase):
         context.current = subnet1
         self.driver.update_subnet_postcommit(context)
         self.assertEtcdDeletes(set([
-            '/calico/dhcp/v1/subnet/subnet-id-10.65.0--24'
+            '/calico/dhcp/v2/no-region/subnet/subnet-id-10.65.0--24'
         ]))
 
         # Update subnet2 to be DHCP-enabled.
@@ -994,7 +1010,7 @@ class TestPluginEtcd(_TestEtcdBase):
         context.current = subnet2
         self.driver.update_subnet_postcommit(context)
         self.assertEtcdWrites({
-            '/calico/dhcp/v1/subnet/subnet-id-10.28.0--24': {
+            '/calico/dhcp/v2/no-region/subnet/subnet-id-10.28.0--24': {
                 'network_id': 'net-id-2',
                 'cidr': '10.28.0.0/24',
                 'gateway_ip': '10.28.0.1',
@@ -1013,7 +1029,7 @@ class TestPluginEtcd(_TestEtcdBase):
             '/calico/resources/v3/projectcalico.org/clusterinformations/' +
             'default']['spec']['clusterGUID'] = 'uuid-subnet-hooks-2'
         expected_writes.update({
-            '/calico/dhcp/v1/subnet/subnet-id-10.28.0--24': {
+            '/calico/dhcp/v2/no-region/subnet/subnet-id-10.28.0--24': {
                 'network_id': 'net-id-2',
                 'cidr': '10.28.0.0/24',
                 'gateway_ip': '10.28.0.1',
@@ -1030,7 +1046,7 @@ class TestPluginEtcd(_TestEtcdBase):
         self.give_way()
         self.simulated_time_advance(mech_calico.RESYNC_INTERVAL_SECS)
         self.assertEtcdWrites({
-            '/calico/dhcp/v1/subnet/subnet-id-10.65.0--24': {
+            '/calico/dhcp/v2/no-region/subnet/subnet-id-10.65.0--24': {
                 'network_id': 'net-id-1',
                 'cidr': '10.65.0.0/24',
                 'gateway_ip': '10.65.0.1',
@@ -1038,7 +1054,7 @@ class TestPluginEtcd(_TestEtcdBase):
                                  'nexthop': '10.65.0.1'}]}
         })
         self.assertEtcdDeletes(set([
-            '/calico/dhcp/v1/subnet/subnet-id-10.28.0--24'
+            '/calico/dhcp/v2/no-region/subnet/subnet-id-10.28.0--24'
         ]))
 
         # Do a resync where we simulate having missed a dynamic update that
@@ -1047,7 +1063,7 @@ class TestPluginEtcd(_TestEtcdBase):
         self.give_way()
         self.simulated_time_advance(mech_calico.RESYNC_INTERVAL_SECS)
         self.assertEtcdWrites({
-            '/calico/dhcp/v1/subnet/subnet-id-10.65.0--24': {
+            '/calico/dhcp/v2/no-region/subnet/subnet-id-10.65.0--24': {
                 'network_id': 'net-id-1',
                 'cidr': '10.65.0.0/24',
                 'gateway_ip': '10.65.0.2',
@@ -1066,7 +1082,7 @@ class TestPluginEtcd(_TestEtcdBase):
         context.current = subnet1
         self.driver.delete_subnet_postcommit(context)
         self.assertEtcdDeletes(set([
-            '/calico/dhcp/v1/subnet/subnet-id-10.65.0--24'
+            '/calico/dhcp/v2/no-region/subnet/subnet-id-10.65.0--24'
         ]))
 
     def test_check_segment_for_agent(self):
