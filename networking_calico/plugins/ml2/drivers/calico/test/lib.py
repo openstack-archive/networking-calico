@@ -48,6 +48,8 @@ sys.modules['neutron.plugins'] = m_neutron.plugins
 sys.modules['neutron.plugins.ml2'] = m_neutron.plugins.ml2
 sys.modules['neutron.plugins.ml2.drivers'] = m_neutron.plugins.ml2.drivers
 sys.modules['neutron.plugins.ml2.rpc'] = m_neutron.plugins.ml2.rpc
+sys.modules['neutron_lib'] = m_neutron_lib = mock.MagicMock()
+sys.modules['neutron_lib.worker'] = m_neutron_lib.worker
 sys.modules['sqlalchemy'] = m_sqlalchemy = mock.Mock()
 sys.modules['sqlalchemy.orm'] = m_sqlalchemy.orm
 sys.modules['sqlalchemy.orm.exc'] = m_sqlalchemy.orm.exc
@@ -171,6 +173,24 @@ class GrandDukeOfSalzburg(object):
 # that CalicoMechanismDriver inherits from - with this stub class.
 m_neutron.plugins.ml2.drivers.mech_agent.SimpleAgentMechanismDriverBase = \
     DriverBase
+
+
+# Replace neutron-lib worker module
+class FakeBaseWorker(object):
+    def __init__(self, worker_process_count=0):
+        pass
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def wait(self):
+        pass
+
+
+m_neutron_lib.worker.BaseWorker = FakeBaseWorker
 
 # Import all modules used by the mechanism driver so we can hook their logging.
 from networking_calico import datamodel_v3
