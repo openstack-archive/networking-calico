@@ -427,6 +427,7 @@ class CalicoEtcdWatcher(etcdutils.EtcdWatcher):
             port for port in net.ports if port.device_id.startswith('tap')
         ]
         ports_needed.sort(key=lambda port: port.id)
+        LOG.debug("_update_dnsmasq ports_needed %s" % str(ports_needed))
 
         # Compare that against what we've last asked Dnsmasq to handle.
         if ports_needed != self._last_dnsmasq_ports.get(network_id):
