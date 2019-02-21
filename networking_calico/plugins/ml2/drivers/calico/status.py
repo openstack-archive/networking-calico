@@ -41,7 +41,7 @@ Endpoint = collections.namedtuple(
 )
 
 
-class StatusWatcher(etcdutils.EtcdWatcher):
+class PortStatusWatcher(etcdutils.EtcdWatcher):
     """A class that watches our status-reporting subtree.
 
     Status events use the Calico v1 data model, under
@@ -51,19 +51,19 @@ class StatusWatcher(etcdutils.EtcdWatcher):
     updates to the mechanism driver.
 
     Entrypoints:
-    - StatusWatcher(calico_driver) (constructor)
+    - PortStatusWatcher(calico_driver) (constructor)
     - watcher.start()
     - watcher.stop()
 
     Callbacks (from the thread of watcher.start()):
     - calico_driver.on_port_status_changed
-    - calico_driver.on_felix_alive
     """
 
     def __init__(self, calico_driver):
         self.region_string = calico_config.get_region_string()
         status_path = datamodel_v2.felix_status_dir(self.region_string)
-        super(StatusWatcher, self).__init__(status_path, "/round-trip-check")
+        super(PortStatusWatcher, self).__init__(status_path,
+                                                "/round-trip-check-port")
         self.calico_driver = calico_driver
 
         self.processing_snapshot = False
@@ -72,22 +72,20 @@ class StatusWatcher(etcdutils.EtcdWatcher):
         # removed endpoints during a resync.
         self._endpoints_by_host = collections.defaultdict(set)
 
-        # Map of live Felix notifications: hostname -> the latest mod_revision
-        # that we have handled for that host.  We track mod_revision because
-        # EtcdWatcher has to emit duplicate notifications to us, and we want to
-        # deduplicate before passing on to the Neutron DB.
-        self._felix_live_rev = {}
-
-        # Register for felix uptime updates.
-        self.register_path(status_path + "/<hostname>/status",
-                           on_set=self._on_status_set,
-                           on_del=self._on_status_del)
         # Register for per-port status updates.
         self.register_path(status_path + "/<hostname>/workload/openstack/"
                            "<workload>/endpoint/<endpoint>",
                            on_set=self._on_ep_set,
                            on_del=self._on_ep_delete)
-        LOG.info("StatusWatcher created")
+
+        # Ignore updates that handled by the agent-alive worker
+        self.register_path(status_path + "/<hostname>/status")
+        self.register_path(status_path + "/round-trip-check-agent")
+
+        LOG.info("PortStatusWatcher created")
+
+    def _noop(self, response, **kwargs):
+        return
 
     def _pre_snapshot_hook(self):
         # Save off current endpoint status, then reset current state, so we
@@ -116,36 +114,6 @@ class StatusWatcher(etcdutils.EtcdWatcher):
                         None,
                         priority="low")
         self.processing_snapshot = False
-
-    def _on_status_set(self, response, hostname):
-        """Called when a felix uptime report is inserted/updated."""
-        try:
-            value = json.loads(response.value)
-            new = bool(value.get("first_update"))
-        except (ValueError, TypeError):
-            LOG.warning("Bad JSON data for key %s: %s",
-                        response.key, response.value)
-        else:
-            mod_revision = response.mod_revision
-            if self._felix_live_rev.get(hostname) != mod_revision:
-                self.calico_driver.on_felix_alive(
-                    hostname,
-                    new=new,
-                )
-                self._felix_live_rev[hostname] = mod_revision
-
-    def _on_status_del(self, response, hostname):
-        """Called when Felix's status key expires.  Implies felix is dead."""
-        # Notes:
-        #
-        # - we used to mark the ports that Felix was managing as in-ERROR
-        #   here but, at high scale, that can cause a DoS if the failure is
-        #   not limited to a single Felix (an etcd connectivity outage, for
-        #   example).
-        #
-        # - There's no way to report the failure to neutron; neutron spots
-        #   agent failures by timeout.
-        LOG.error("Felix on host %s failed to check in.", hostname)
 
     def _on_ep_set(self, response, hostname, workload, endpoint):
         """Called when the status key for a particular endpoint is updated.
@@ -198,3 +166,80 @@ class StatusWatcher(etcdutils.EtcdWatcher):
             None,
             priority="low" if self.processing_snapshot else "high",
         )
+
+
+class AgentStatusWatcher(etcdutils.EtcdWatcher):
+    """A class that watches our status-reporting subtree.
+
+    Status events use the Calico v1 data model, under
+    datamodel_v2.felix_status_dir, but are written and read over etcdv3.
+
+    This class parses events within that subtree and passes corresponding
+    updates to the mechanism driver.
+
+    Entrypoints:
+    - AgentStatusWatcher(calico_driver) (constructor)
+    - watcher.start()
+    - watcher.stop()
+
+    Callbacks (from the thread of watcher.start()):
+    - calico_driver.on_felix_alive
+    """
+
+    def __init__(self, calico_driver):
+        self.region_string = calico_config.get_region_string()
+        status_path = datamodel_v2.felix_status_dir(self.region_string)
+        super(AgentStatusWatcher, self).__init__(status_path,
+                                                 "/round-trip-check-agent")
+        self.calico_driver = calico_driver
+
+        # Map of live Felix notifications: hostname -> the latest mod_revision
+        # that we have handled for that host.  We track mod_revision because
+        # EtcdWatcher has to emit duplicate notifications to us, and we want to
+        # deduplicate before passing on to the Neutron DB.
+        self._felix_live_rev = {}
+
+        # Register for felix uptime updates.
+        self.register_path(status_path + "/<hostname>/status",
+                           on_set=self._on_status_set,
+                           on_del=self._on_status_del)
+
+        # Ignore updates that handled by the port status worker
+        self.register_path(status_path + "/<hostname>/workload/openstack/"
+                           "<workload>/endpoint/<endpoint>")
+        self.register_path(status_path + "/round-trip-check-port")
+
+        LOG.info("AgentStatusWatcher created")
+
+    def _noop(self, response, **kwargs):
+        return
+
+    def _on_status_set(self, response, hostname):
+        """Called when a felix uptime report is inserted/updated."""
+        try:
+            value = json.loads(response.value)
+            new = bool(value.get("first_update"))
+        except (ValueError, TypeError):
+            LOG.warning("Bad JSON data for key %s: %s",
+                        response.key, response.value)
+        else:
+            mod_revision = response.mod_revision
+            if self._felix_live_rev.get(hostname) != mod_revision:
+                self.calico_driver.on_felix_alive(
+                    hostname,
+                    new=new,
+                )
+                self._felix_live_rev[hostname] = mod_revision
+
+    def _on_status_del(self, response, hostname):
+        """Called when Felix's status key expires.  Implies felix is dead."""
+        # Notes:
+        #
+        # - we used to mark the ports that Felix was managing as in-ERROR
+        #   here but, at high scale, that can cause a DoS if the failure is
+        #   not limited to a single Felix (an etcd connectivity outage, for
+        #   example).
+        #
+        # - There's no way to report the failure to neutron; neutron spots
+        #   agent failures by timeout.
+        LOG.error("Felix on host %s failed to check in.", hostname)
