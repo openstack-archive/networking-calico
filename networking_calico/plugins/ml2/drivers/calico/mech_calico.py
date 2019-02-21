@@ -29,6 +29,7 @@ from functools import wraps
 import inspect
 import os
 import re
+import traceback  ## remove
 import uuid
 
 # OpenStack imports.
@@ -78,8 +79,8 @@ from networking_calico.plugins.ml2.drivers.calico.endpoints import \
 from networking_calico.plugins.ml2.drivers.calico.endpoints import \
     WorkloadEndpointSyncer
 from networking_calico.plugins.ml2.drivers.calico.policy import PolicySyncer
-from networking_calico.plugins.ml2.drivers.calico.status import StatusWatcher
 from networking_calico.plugins.ml2.drivers.calico.subnets import SubnetSyncer
+from networking_calico.plugins.ml2.drivers.calico import worker
 
 # Imports for a Keystone client.
 from keystoneauth1.identity import v3
@@ -229,11 +230,22 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         mech_driver = self
 
         # Make sure we initialise even if we don't see any API calls.
-        eventlet.spawn_after(STARTUP_DELAY_SECS, self._post_fork_init)
+        self._worker_mode = None
+        self._periodic_thread = None
+        self._post_init_thread = eventlet.spawn_after(STARTUP_DELAY_SECS,
+                                                      self._post_fork_init)
         LOG.info("Created Calico mechanism driver %s", self)
 
+    def get_workers(self):
+        """Get any worker instances that should have their own process
+
+        Any driver that needs to run processes separate from the API or RPC
+        workers, can return a sequence of worker instances.
+        """
+        return [worker.AgentCalicoWorker(self), worker.PortCalicoWorker(self)]
+
     @logging_exceptions(LOG)
-    def _post_fork_init(self):
+    def _post_fork_init(self, worker_mode=None):
         """_post_fork_init
 
         Creates the connection state required for talking to the Neutron DB
@@ -252,6 +264,12 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         # API request, or if this fork processes multiple Neutron API requests
         # at the same time.
         with self._init_lock:
+            if self._worker_mode is not None:
+                # Already initialized in a background worker; do not re-init
+                LOG.info("Calico state already initialised for %s PID %s",
+                         self._worker_mode, self._my_pid)
+                return
+
             current_pid = os.getpid()
             if self._my_pid == current_pid:
                 # We've initialised our PID and it hasn't changed since last
@@ -265,12 +283,16 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             if self._my_pid is not None:
                 # This is unexpected but we can deal with it: Neutron should
                 # fork before we trigger the first call to _post_fork_init!().
-                LOG.warning("PID changed from %s to %s; unexpected fork after "
+                LOG.warning("PID changed from %s to %s, worker from %s to %s; "
+                            "unexpected fork after "
                             "initialisation?  Reinitialising Calico driver.",
-                            self._my_pid, current_pid)
+                            self._my_pid, current_pid,
+                            str(self._worker_mode), str(worker_mode))
+                LOG.warning(traceback.format_stack()) ## remove
             else:
                 LOG.info("Doing Calico mechanism driver initialisation in"
-                         " process %s", current_pid)
+                         " process %s, worker_mode %s", current_pid,
+                         str(worker_mode))
 
             # (Re)init the DB.
             self.db = None
@@ -340,15 +362,20 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             LOG.debug("Keystone client = %r", keystone_client)
 
             # Create syncers.
-            self.subnet_syncer = \
-                SubnetSyncer(self.db, self._txn_from_context)
-            self.policy_syncer = \
-                PolicySyncer(self.db, self._txn_from_context)
-            self.endpoint_syncer = \
-                WorkloadEndpointSyncer(self.db,
-                                       self._txn_from_context,
-                                       self.policy_syncer,
-                                       keystone_client)
+            if worker_mode is None:
+                self.subnet_syncer = \
+                    SubnetSyncer(self.db, self._txn_from_context)
+                self.policy_syncer = \
+                    PolicySyncer(self.db, self._txn_from_context)
+                self.endpoint_syncer = \
+                    WorkloadEndpointSyncer(self.db,
+                                           self._txn_from_context,
+                                           self.policy_syncer,
+                                           keystone_client)
+            else:
+                self.subnet_syncer = None
+                self.policy_syncer = None
+                self.endpoint_syncer = None
 
             # Admin context used by (only) the thread that updates Felix agent
             # status.
@@ -365,12 +392,18 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             )
 
             # Elector, for performing leader election.
-            self.elector = Elector(cfg.CONF.calico.elector_name,
-                                   datamodel_v2.neutron_election_key(
-                                       calico_config.get_region_string()),
-                                   old_key=datamodel_v1.NEUTRON_ELECTION_KEY,
-                                   interval=MASTER_REFRESH_INTERVAL,
-                                   ttl=MASTER_TIMEOUT)
+            if worker_mode is None:
+                election_key = datamodel_v2.neutron_election_key(
+                    calico_config.get_region_string())
+                old_key = datamodel_v1.NEUTRON_ELECTION_KEY
+
+                self.elector = Elector(cfg.CONF.calico.elector_name,
+                                       election_key,
+                                       old_key=old_key,
+                                       interval=MASTER_REFRESH_INTERVAL,
+                                       ttl=MASTER_TIMEOUT)
+            else:
+                self.elector = None
 
             self._my_pid = current_pid
 
@@ -380,48 +413,18 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             # We deliberately do this last, to ensure that all of the setup
             # above is complete before we start running.
             self._epoch += 1
-            eventlet.spawn(self.periodic_resync_thread, self._epoch)
-            eventlet.spawn(self._status_updating_thread, self._epoch)
-            for _ in range(cfg.CONF.calico.num_port_status_threads):
-                eventlet.spawn(self._loop_writing_port_statuses, self._epoch)
-            LOG.info("Calico mechanism driver initialisation done in process "
-                     "%s", current_pid)
-
-    @logging_exceptions(LOG)
-    def _status_updating_thread(self, expected_epoch):
-        """_status_updating_thread
-
-        This method acts as a status updates handler logic for the
-        Calico mechanism driver. Watches for felix updates in etcd
-        and passes info to Neutron database.
-        """
-        LOG.info("Status updating thread started.")
-        while self._epoch == expected_epoch:
-            # Only handle updates if we are the master node.
-            if self.elector.master():
-                if self._etcd_watcher is None:
-                    LOG.info("Became the master, starting StatusWatcher")
-                    self._etcd_watcher = StatusWatcher(self)
-                    self._etcd_watcher_thread = eventlet.spawn(
-                        self._etcd_watcher.start
-                    )
-                    LOG.info("Started %s as %s",
-                             self._etcd_watcher, self._etcd_watcher_thread)
-                elif not self._etcd_watcher_thread:
-                    LOG.error("StatusWatcher %s died", self._etcd_watcher)
-                    self._etcd_watcher.stop()
-                    self._etcd_watcher = None
-            else:
-                if self._etcd_watcher is not None:
-                    LOG.warning("No longer master, stopping StatusWatcher")
-                    self._etcd_watcher.stop()
-                    self._etcd_watcher = None
-                # Short sleep interval before we check if we've become
-                # the master.
-            eventlet.sleep(MASTER_CHECK_INTERVAL_SECS)
-        else:
-            LOG.warning("Unexpected: epoch changed. "
-                        "Handling status updates thread exiting.")
+            if worker_mode is None:
+                self._periodic_thread = eventlet.spawn(
+                    self.periodic_resync_thread, self._epoch)
+            elif self._periodic_thread is not None:
+                eventlet.greenthread.GreenThread.kill(self._periodic_thread)
+                self._periodic_thread = None
+            if worker_mode == "port":
+                for _ in range(cfg.CONF.calico.num_port_status_threads):
+                    eventlet.spawn(
+                        self._loop_writing_port_statuses, self._epoch)
+            self._worker_mode = worker_mode
+            LOG.info("Calico initialisation done in process %s", current_pid)
 
     def on_felix_alive(self, felix_hostname, new):
         LOG.info("Felix on host %s is alive; fanning out status report",
@@ -506,6 +509,8 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 PRIORITY_HIGH if priority == "high" else PRIORITY_LOW,
                 monotonic_time(),
             )
+            LOG.debug("put port status queue %s" % str(id(self._port_status_queue)))
+            LOG.debug("Putting port status into queue: %s" % str(port_status_key))
             self._port_status_queue.put((sortable_priority, port_status_key))
             qsize = self._port_status_queue.qsize()
             if qsize > 10:
@@ -530,9 +535,12 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         admin_context = ctx.get_admin_context()
         while self._epoch == expected_epoch:
             # Wait for work to do.
+            LOG.debug("get port status queue %s" % str(id(self._port_status_queue)))
             _, port_status_key = self._port_status_queue.get()
             # Actually do the update.
+            LOG.info("Port status write thread trying %s", str(port_status_key))
             self._try_to_update_port_status(admin_context, port_status_key)
+        LOG.info("Port status write thread exiting epoch=%s", expected_epoch)
 
     def _try_to_update_port_status(self, admin_context, port_status_key):
         """Attempts to update the given port status.
