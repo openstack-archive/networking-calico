@@ -442,7 +442,7 @@ class TestPluginEtcdBase(_TestEtcdBase):
                      'interfaceName': 'tapDEADBEEF-12',
                      'ipNATs': [{'externalIP': '192.168.0.1',
                                  'internalIP': '10.65.0.2'}],
-                     'ipNetworks': ['10.65.0.2/32'],
+                     'ipNetworks': ['10.65.0.2/32', '23.23.23.2/32'],
                      'ipv4Gateway': '10.65.0.1',
                      'mac': '00:11:22:33:44:55',
                      'node': 'felix-host-1',

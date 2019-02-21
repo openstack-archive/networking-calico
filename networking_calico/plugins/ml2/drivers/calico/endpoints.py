@@ -387,6 +387,14 @@ def endpoint_spec(port):
             ip_nets.append(ip['ip_address'] + '/32')
             if ip['gateway'] is not None:
                 data['ipv4Gateway'] = ip['gateway']
+
+    for aap in port.get('allowed_address_pairs', []):
+        ip_addr = str(aap['ip_address'])
+        if ':' in ip_addr:
+            ip_nets.append(ip_addr + '/128')
+        else:
+            ip_nets.append(ip_addr + '/32')
+
     data['ipNetworks'] = ip_nets
 
     ip_nats = []
