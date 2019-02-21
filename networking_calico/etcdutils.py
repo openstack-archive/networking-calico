@@ -37,6 +37,7 @@ ACTION_MAPPING = {
     "compareAndDelete": "delete",
     "expire": "delete",
 }
+HANDLER_IGNORE = "ignore"
 WATCH_TIMEOUT_SECS = 10
 
 
@@ -58,10 +59,8 @@ class PathDispatcher(object):
                 )
             else:
                 node = node.setdefault(part, {})
-        if on_set:
-            node["set"] = on_set
-        if on_del:
-            node["delete"] = on_del
+        node["set"] = on_set or HANDLER_IGNORE
+        node["delete"] = on_del or HANDLER_IGNORE
 
     def handle_event(self, response):
         """handle_event
@@ -75,20 +74,24 @@ class PathDispatcher(object):
     def _handle(self, key_parts, response, handler_node, captures):
         while key_parts:
             next_part = key_parts.pop(0)
-            if "capture" in handler_node:
+            if next_part in handler_node:
+                handler_node = handler_node[next_part]
+            elif "capture" in handler_node:
                 capture_name, handler_node = handler_node["capture"]
                 captures[capture_name] = next_part
-            elif next_part in handler_node:
-                handler_node = handler_node[next_part]
             else:
                 LOG.debug("No matching sub-handler for %s", response.key)
                 return
         # We've reached the end of the key.
         action = ACTION_MAPPING.get(response.action)
         if action in handler_node:
-            LOG.debug("Found handler for event %s for %s, captures: %s",
-                      action, response.key, captures)
-            handler_node[action](response, **captures)
+            if handler_node[action] is not HANDLER_IGNORE:
+                LOG.debug("Found handler for event %s for %s, captures: %s",
+                          action, response.key, captures)
+                handler_node[action](response, **captures)
+            else:
+                LOG.debug("Ignore handler for event %s on %s. Handler "
+                          "node %s.", action, response.key, handler_node)
         else:
             LOG.debug("No handler for event %s on %s. Handler node %s.",
                       action, response.key, handler_node)
