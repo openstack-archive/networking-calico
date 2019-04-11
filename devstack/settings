@@ -25,6 +25,9 @@ else
     # now removed.
     enable_service etcd3
 
+    # Enable keystone.
+    enable_service keystone
+
     # Disable services that Devstack starts by default, but that we
     # don't need for Calico networking demonstration: 'dstat' is a
     # rolling display of memory and CPU usage by the various OpenStack

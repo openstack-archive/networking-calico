@@ -116,16 +116,17 @@ EOF
 		    if test -n "$CALICO_ETCD_COMPACTION_MIN_REVISIONS"; then
 			iniset $NEUTRON_CONF calico etcd_compaction_min_revisions $CALICO_ETCD_COMPACTION_MIN_REVISIONS
 		    fi
-
-		    # Give Neutron the admin role so that it can look up
-		    # project name and parent_id fields in the Keystone DB.
-		    openstack role add admin --user neutron --project service --user-domain Default --project-domain Default
 		    ;;
 
 		extra)
 		    # Called near the end after layer 1 and 2 services
 		    # have been started.
 		    echo Calico plugin: extra
+
+		    # Give Neutron the admin role so that it can look up
+		    # project name and parent_id fields in the Keystone DB.
+		    export OS_IDENTITY_API_VERSION=3
+		    openstack role add admin --user neutron --project service --user-domain Default --project-domain Default
 
 		    # Run script to automatically generate and
 		    # maintain BIRD config for the cluster.
