@@ -36,6 +36,9 @@ class CalicoPlugin(Ml2Plugin, l3_db.L3_NAT_db_mixin):
         # Add the ability to handle floating IPs.
         self._supported_extension_aliases.extend(["router"])
 
+        # Disable DNS integration
+        self._dns_integration = False
+
         # Set ML2 options so the user doesn't have to.
         LOG.info("Forcing ML2 mechanism_drivers to 'calico'")
         cfg.CONF.set_override('mechanism_drivers', ['calico'], group='ml2')
