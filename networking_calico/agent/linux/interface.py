@@ -30,7 +30,7 @@ class RoutedInterfaceDriver(interface.LinuxInterfaceDriver):
 
     DEV_NAME_PREFIX = 'ns-'
 
-    def __init__(self, conf):
+    def __init__(self, conf, get_networks_callback=None):
         super(RoutedInterfaceDriver, self).__init__(conf)
 
     @property
