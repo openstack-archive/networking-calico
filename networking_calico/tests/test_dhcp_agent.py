@@ -399,7 +399,10 @@ class TestDnsmasqRouted(base.BaseTestCase):
         network.non_local_subnets = []
         network.get.side_effect = lambda key, dflt=None: dflt
         device_mgr_cls.return_value.driver.bridged = False
-        dhcp_driver = DnsmasqRouted(cfg.CONF, network, None)
+        dhcp_driver = DnsmasqRouted(cfg.CONF,
+                                    network,
+                                    None,
+                                    plugin=FakePlugin())
         with mock.patch.object(dhcp_driver, '_get_value_from_conf_file') as gv:
             gv.return_value = 'ns-dhcp'
             cmdline = dhcp_driver._build_cmdline_callback('/run/pid_file')
