@@ -229,7 +229,7 @@ class Elector(object):
                                             existing_value=master_id)
                 except Etcd3Exception as e:
                     LOG.warning("Failed to remove stale key from dead "
-                                "master: %r", e)
+                                "master: %r:\n%s", e, e.detail_text)
                     deleted = False
 
                 if not deleted:
@@ -321,8 +321,8 @@ class Elector(object):
         if isinstance(exc, Etcd3Exception):
             # Expected errors (with good messages): timeouts and connection
             # failures.  Don't log stack traces to avoid cluttering the log.
-            LOG.warning("Failed to %s - key %s: %r", failed_to,
-                        self._key, exc)
+            LOG.warning("Failed to %s - key %s: %r:\n%s", failed_to,
+                        self._key, exc, exc.detail_text)
         else:
             # Genuinely unexpected errors.
             LOG.exception("Failed to %s - key %s: %r", failed_to,
