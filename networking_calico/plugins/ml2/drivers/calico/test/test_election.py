@@ -168,7 +168,7 @@ class TestElection(unittest.TestCase):
         LOG.debug("test_initial_read_exceptions")
 
         etcdv3._client = client = stub_etcd.Client()
-        client.add_read_exception(e3e.Etcd3Exception())
+        client.add_read_exception(e3e.Etcd3Exception(detail_text="Unauthorised user"))
         client.add_read_exception(e3e.InternalServerError())
         client.add_read_exception(e3e.ConnectionFailedError())
         client.add_read_exception(e3e.PreconditionFailedError())
