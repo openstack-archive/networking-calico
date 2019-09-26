@@ -12,6 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from neutron.db import extraroute_db
 from neutron.db import l3_db
 from neutron.plugins.ml2.plugin import Ml2Plugin
 
@@ -23,7 +24,8 @@ from networking_calico.compat import log
 LOG = log.getLogger(__name__)
 
 
-class CalicoPlugin(Ml2Plugin, l3_db.L3_NAT_db_mixin):
+class CalicoPlugin(Ml2Plugin, l3_db.L3_NAT_db_mixin,
+                   extraroute_db.ExtraRoute_db_mixin):
 
     # These attributes specify whether the plugin supports or not
     # bulk/pagination/sorting operations. Name mangling is used in
