@@ -72,6 +72,8 @@ EOF
 		    # enabled services should exist at this point.
 		    echo Calico plugin: post-config
 
+		    alias openstack="oscwrap --debug"
+
 		    # Update qemu configuration (shouldn't be anything
 		    # in there so safe to blow away)
 		    sudo sh -c "cat > /etc/libvirt/qemu.conf" << EOF
