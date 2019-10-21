@@ -72,3 +72,6 @@ ML2_L3_PLUGIN=
 
 # Don't use systemd.
 USE_SYSTEMD=False
+
+# Needed to make stable/queens devstack run on Ubuntu Bionic.
+FORCE=yes

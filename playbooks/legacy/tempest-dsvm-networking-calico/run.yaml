@@ -43,7 +43,7 @@
           export PYTHONUNBUFFERED=true
           export DEVSTACK_GATE_NEUTRON=1
           export DEVSTACK_GATE_TEMPEST=1
-          export BRANCH_OVERRIDE=default
+          export BRANCH_OVERRIDE=stable/rocky
           if [ "$BRANCH_OVERRIDE" != "default" ] ; then
               export OVERRIDE_ZUUL_BRANCH=$BRANCH_OVERRIDE
           fi
