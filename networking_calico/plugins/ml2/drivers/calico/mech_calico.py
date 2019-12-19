@@ -113,7 +113,7 @@ QUEUE_WARN_LOG_INTERVAL_SECS = 10
 
 # An OpenStack agent type name for Felix, the Calico agent component in the new
 # architecture.
-AGENT_TYPE_FELIX = 'Calico per-host agent (felix)'
+AGENT_TYPE_FELIX = 'Calico per-host agent (calico-felix)'
 AGENT_ID_FELIX = 'calico-felix'
 
 # Mapping from our endpoint status to neutron's port status.
