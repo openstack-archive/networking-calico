@@ -1,27 +1,14 @@
-========================
-Team and repository tags
-========================
+This project (networking-calico) is no longer maintained here.
 
-.. image:: http://governance.openstack.org/badges/networking-calico.svg
-    :target: http://governance.openstack.org/reference/tags/index.html
+The prior contents of this repository can still be seen in the Git
+history here.  To see the contents of this repository before it
+reached its end of life, please check out the previous commit with
+"git checkout HEAD^1".
 
-.. Change things from this point on
+networking-calico's new home is
+https://github.com/projectcalico/networking-calico.  For new
+contribution guidelines, please see the CONTRIBUTING.md file there.
 
-============
-Introduction
-============
-
-This project contains code for integrating Project Calico's networking into
-OpenStack/Neutron.
-
-Calico is an open source solution for virtual networking in cloud data centers,
-developed principally by Tigera and released under the Apache 2.0 License.
-
-For general documentation about Calico, including how to get started with a
-Calico/OpenStack installation, and how to use various OpenStack/Neutron
-features with Calico, please see http://docs.projectcalico.org/master.
-
-* Free software: Apache license
-* Documentation: http://docs.projectcalico.org/master
-* Source: http://opendev.org/openstack/networking-calico
-* Bugs: http://bugs.launchpad.net/networking-calico
+For any further questions, please email
+openstack-discuss@lists.openstack.org or join #openstack-dev on
+Freenode.
