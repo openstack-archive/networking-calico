@@ -1,0 +1,9 @@
+Code-Review+1: Andreas Jaeger <jaegerandi@gmail.com>
+Code-Review+2: Shaun Crampton <shaun@tigera.io>
+Workflow+1: Shaun Crampton <shaun@tigera.io>
+Verified+2: Zuul
+Submitted-by: Zuul
+Submitted-at: Mon, 17 Feb 2020 10:09:19 +0000
+Reviewed-on: https://review.opendev.org/707357
+Project: openstack/networking-calico
+Branch: refs/heads/master
